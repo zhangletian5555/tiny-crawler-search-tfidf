@@ -11,14 +11,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from config import (
-    ConfigError,
-    Settings,
-    add_common_args,
-    config_file_from_args,
-    overrides_from_args,
-    print_settings,
-)
+from cli import CliError, load_settings, print_config_if_requested, report_error
+from config import Settings, add_common_args
 from tokenizer.stopwords import StopwordFileError, load_stopwords
 
 from .engine import IndexFormatError, SearchEngine, latest_index, load_index
@@ -35,13 +29,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-k", "--top-k", type=int, metavar="N", help="返回条数，默认取配置里的 search.k")
     parser.add_argument("--print-config", action="store_true", help="打印生效配置后退出")
     return parser
-
-
-def load_settings(args: argparse.Namespace) -> Settings:
-    settings = Settings.from_file(config_file_from_args(args))
-    for override in overrides_from_args(args):
-        settings = settings.override(override.section, override.key, override.raw_value)
-    return settings
 
 
 def run_search(settings: Settings, args: argparse.Namespace) -> int:
@@ -105,13 +92,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         settings = load_settings(args)
-    except ConfigError as error:
-        print(f"配置错误：{error}", file=sys.stderr)
-        return 2
-
-    if args.print_config:
-        print_settings(settings)
-        return 0
+        if print_config_if_requested(args, settings):
+            return 0
+    except CliError as error:
+        return report_error(error)
 
     return run_search(settings, args)
 

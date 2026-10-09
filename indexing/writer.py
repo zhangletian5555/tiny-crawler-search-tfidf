@@ -21,6 +21,8 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
+from runtime import timestamped_dir
+
 from .builder import IndexStats
 
 INDEX_FORMAT_VERSION = 2
@@ -33,7 +35,7 @@ def write_index(
     title_weight: float,
 ) -> Path:
     """把索引写成一个新的 <index_id> 目录，返回该目录。"""
-    index_dir = _create_dir(index_root)
+    index_dir = timestamped_dir(index_root)
 
     _write_jsonl(
         index_dir / "docs.jsonl",
@@ -109,20 +111,6 @@ def _write_terms(path: Path, stats: IndexStats) -> dict[str, int]:
 def load_meta(index_dir: Path) -> dict:
     """读取 meta.json，用于检查格式版本与来源。"""
     return json.loads((index_dir / "meta.json").read_text(encoding="utf-8"))
-
-
-def _create_dir(index_root: Path) -> Path:
-    """新建索引目录。同一秒内重复构建时追加序号。"""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    index_root.mkdir(parents=True, exist_ok=True)
-
-    index_dir = index_root / stamp
-    suffix = 1
-    while index_dir.exists():
-        index_dir = index_root / f"{stamp}-{suffix}"
-        suffix += 1
-    index_dir.mkdir()
-    return index_dir
 
 
 def _write_jsonl(path: Path, rows: Iterable[dict]) -> None:

@@ -11,14 +11,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from config import (
-    ConfigError,
-    Settings,
-    add_common_args,
-    config_file_from_args,
-    overrides_from_args,
-    print_settings,
-)
+from cli import CliError, load_settings, print_config_if_requested, report_error
+from config import Settings, add_common_args
+from runtime import latest_subdirectory
 from tokenizer.stopwords import StopwordFileError, load_stopwords
 
 from .builder import IndexStats, build_index
@@ -36,19 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def load_settings(args: argparse.Namespace) -> Settings:
-    settings = Settings.from_file(config_file_from_args(args))
-    for override in overrides_from_args(args):
-        settings = settings.override(override.section, override.key, override.raw_value)
-    return settings
-
-
 def latest_run(crawl_dir: Path) -> Path:
     """取目录名最大的一次运行（运行目录按时间戳命名）。"""
-    runs = sorted(path for path in crawl_dir.iterdir() if path.is_dir())
-    if not runs:
-        raise FileNotFoundError(f"没有可索引的抓取运行：{crawl_dir}")
-    return runs[-1]
+    return latest_subdirectory(crawl_dir, "抓取运行")
 
 
 def run_indexing(settings: Settings, run_dir: Path | None) -> int:
@@ -100,13 +85,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         settings = load_settings(args)
-    except ConfigError as error:
-        print(f"配置错误：{error}", file=sys.stderr)
-        return 2
-
-    if args.print_config:
-        print_settings(settings)
-        return 0
+        if print_config_if_requested(args, settings):
+            return 0
+    except CliError as error:
+        return report_error(error)
 
     return run_indexing(settings, Path(args.run_dir) if args.run_dir else None)
 

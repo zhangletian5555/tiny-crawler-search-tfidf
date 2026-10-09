@@ -14,15 +14,13 @@ import signal
 import sys
 from pathlib import Path
 
-from config import (
-    ConfigError,
-    Settings,
-    add_common_args,
-    config_file_from_args,
-    overrides_from_args,
-    print_settings,
-    resolve_path,
+from cli import (
+    CliError,
+    load_settings,
+    print_config_if_requested,
+    report_error,
 )
+from config import Settings, add_common_args, resolve_path
 from tokenizer.segments import parts
 
 from .fetcher import create_session, fetch_page
@@ -64,14 +62,6 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--resume", action="store_true", help="从上次断点继续")
     run_parser.add_argument("--run-dir", metavar="PATH", help="续爬时指定运行目录")
     return parser
-
-
-def load_settings(args: argparse.Namespace) -> Settings:
-    """定位配置文件并应用 --set 覆盖。"""
-    settings = Settings.from_file(config_file_from_args(args))
-    for override in overrides_from_args(args):
-        settings = settings.override(override.section, override.key, override.raw_value)
-    return settings
 
 
 # ----------------------------------------------------------------------
@@ -284,22 +274,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         settings = load_settings(args)
-    except ConfigError as error:
-        print(f"配置错误：{error}", file=sys.stderr)
-        return 2
-
-    if args.print_config:
-        # 这里打印的必须是"合并 --set 之后"的生效配置，否则 --print-config
-        # 就失去了排障价值
         seed_file = _seeds_path(settings, args.seeds)
-        try:
-            seeds = read_seeds(seed_file)
-        except SeedFileError as error:
-            print(f"种子错误：{error}", file=sys.stderr)
-            return 2
-        print_settings(settings)
-        print(f"\n[seeds]\n  file = {seed_file}\n  count = {len(seeds)}")
-        return 0
+        if print_config_if_requested(args, settings, lambda: _report_seeds(seed_file)):
+            return 0
+    except (CliError, SeedFileError) as error:
+        return report_error(error)
 
     if args.command == "fetch":
         return run_fetch(settings, args.url)
@@ -313,6 +292,12 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 1
+
+
+def _report_seeds(seed_file: Path) -> None:
+    """--print-config 时补充种子文件的路径与条数，便于确认抓取输入。"""
+    seeds = read_seeds(seed_file)
+    print(f"\n[seeds]\n  file = {seed_file}\n  count = {len(seeds)}")
 
 
 if __name__ == "__main__":

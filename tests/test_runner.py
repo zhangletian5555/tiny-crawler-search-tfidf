@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from corpus import CRAWL_CONFIG as CONFIG
+
 from config import CrawlConfig
 from crawler.frontier import Frontier
 from crawler.runner import Crawler
@@ -22,17 +24,6 @@ PAGES = {
     DEEP: "<html><head><title>团队</title></head><body>成员</body></html>",
     OTHER: '<html><head><title>外站</title></head><body><a href="/">回首页</a></body></html>',
 }
-
-CONFIG = CrawlConfig(
-    user_agent="test-agent/0.1",
-    default_delay_seconds=0.0,
-    respect_robots=False,
-    max_pages=0,
-    max_pages_per_host=100,
-    request_timeout=5.0,
-    max_retries=0,
-    retry_backoff_seconds=0.0,
-)
 
 
 class SiteSession:

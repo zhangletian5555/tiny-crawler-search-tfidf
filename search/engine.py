@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
+
+import jieba
 
 from indexing.builder import DocumentInfo
 from indexing.writer import INDEX_FORMAT_VERSION, load_meta
+from runtime import latest_subdirectory
 
 from .query import query_term_frequency, query_weight
 from .result import SearchResult
@@ -40,7 +43,7 @@ class SearchEngine:
     ) -> None:
         self.index_dir = index_dir
         self.documents = documents
-        self.idf = idf
+        self._idf = idf
         self.doc_norms = doc_norms
         self.stopwords = stopwords
         self.title_weight = title_weight
@@ -51,19 +54,28 @@ class SearchEngine:
     def document_count(self) -> int:
         return len(self.documents)
 
+    @property
+    def idf(self) -> dict[str, float]:
+        """词 -> idf。只读用途（排查、统计），打分内部走 `_idf`。"""
+        return dict(self._idf)
+
+    def _known_terms(self, term_frequency: Counter[str]) -> set[str]:
+        """查询词里"索引中存在"的那些——只有它们才有倒排表可读。"""
+        return {term for term in term_frequency if term in self.idf}
+
     def search(self, text: str, k: int = 20) -> list[SearchResult]:
         """返回得分最高的 k 篇文档；没有命中时返回空列表。"""
         term_frequency = query_term_frequency(text, self.stopwords)
         if not term_frequency:
             return []
 
-        wanted = {term: self.idf[term] for term in term_frequency if term in self.idf}
+        wanted = self._known_terms(term_frequency)
         if not wanted:
             return []
 
         scores: dict[str, float] = defaultdict(float)
         for term, postings in self._postings_for(wanted):
-            idf_value = wanted[term]
+            idf_value = self._idf[term]
             for doc_id, title_tf, body_tf in postings:
                 norm = self.doc_norms.get(doc_id)
                 if norm is None:
@@ -81,7 +93,7 @@ class SearchEngine:
     # 内部步骤
     # ------------------------------------------------------------------
 
-    def _postings_for(self, wanted: dict[str, float]):  # type: ignore[no-untyped-def]
+    def _postings_for(self, wanted: set[str]):  # type: ignore[no-untyped-def]
         """按 term_offsets.json 里的偏移直接 seek 读取涉及的行。
 
         只读查询涉及的几个词，不扫描整张倒排表——这是查询耗时的关键：
@@ -110,12 +122,7 @@ class SearchEngine:
 
 def latest_index(index_root: Path) -> Path:
     """取索引根目录下最新一次构建（构建目录按时间戳命名）。"""
-    if not index_root.is_dir():
-        raise FileNotFoundError(f"索引根目录不存在：{index_root}")
-    builds = sorted(path for path in index_root.iterdir() if path.is_dir())
-    if not builds:
-        raise FileNotFoundError(f"还没有构建过索引：{index_root}")
-    return builds[-1]
+    return latest_subdirectory(index_root, "索引")
 
 
 def load_index(index_dir: Path, stopwords: frozenset[str]) -> SearchEngine:
@@ -130,6 +137,10 @@ def load_index(index_dir: Path, stopwords: frozenset[str]) -> SearchEngine:
     payload = json.loads((index_dir / "stats.json").read_text(encoding="utf-8"))
     offsets = json.loads((index_dir / "term_offsets.json").read_text(encoding="utf-8"))
     documents = _load_documents(index_dir)
+
+    # 预热分词器：jieba 的词典是首次调用时才构建的，约 0.8 秒。若留到第一次查询，
+    # 用户会看到首屏明显变慢；放在加载阶段，这次开销就并进了启动时间。
+    jieba.initialize()
 
     return SearchEngine(
         index_dir=index_dir,

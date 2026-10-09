@@ -17,6 +17,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+import jieba
+
 from tokenizer.analyze import terms
 from tokenizer.segments import parts
 
@@ -89,6 +91,10 @@ def build_index(
     seen_doc_ids: set[str] = set()
     seen_content: set[str] = set()
     duplicates = 0
+
+    # jieba 首次调用时才构建词典（约 0.8 秒）；放在循环前，避免把这段开销算进
+    # "第一篇文档" 的计时里，也让整轮构建的进度输出更平稳。
+    jieba.initialize()
 
     for document in read_documents(crawl_dir, manifest_name):
         # 同一主键在清单里出现多次时只索引第一条。清单是逐行追加的，因此第一条

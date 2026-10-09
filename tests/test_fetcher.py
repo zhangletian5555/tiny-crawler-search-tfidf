@@ -6,20 +6,12 @@ from dataclasses import replace
 
 import pytest
 import requests
+from corpus import crawl_config
 
-from config import CrawlConfig
 from crawler.fetcher import create_session, fetch_page
 
-CONFIG = CrawlConfig(
-    user_agent="test-agent/0.1",
-    default_delay_seconds=1.0,
-    respect_robots=True,
-    max_pages=10,
-    max_pages_per_host=10,
-    request_timeout=5.0,
-    max_retries=2,
-    retry_backoff_seconds=2.0,
-)
+# 抓取器测试关心的是重试与退避，因此在共用基底上开启重试并给出退避值
+CONFIG = crawl_config(max_retries=2, retry_backoff_seconds=2.0)
 
 HTML_BODY = b"<html><head><title>\xe6\xb5\x8b\xe8\xaf\x95</title></head><body></body></html>"
 

@@ -8,48 +8,16 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from corpus import STOPWORDS, build_archive
 
-from crawler.store import Archive, RunRecord, document_id
+from crawler.store import Archive, document_id
 from indexing.builder import build_index
 from indexing.writer import INDEX_FORMAT_VERSION, load_meta, write_index
 
-STOPWORDS = frozenset({"的", "了"})
 
-# 三篇小语料，词频与 df 可手算：
-#   A: 标题「人工智能」 正文「人工智能 检索 检索」
-#   B: 标题「检索」     正文「检索 系统」
-#   C: 标题「系统」     正文「系统 人工智能」
-CORPUS = {
-    "https://a.example/": ("人工智能", "人工智能 检索 检索"),
-    "https://b.example/": ("检索", "检索 系统"),
-    "https://c.example/": ("系统", "系统 人工智能"),
-}
-
-
-def build_corpus(root: Path, corpus: dict[str, tuple[str, str]] | None = None) -> Archive:
-    archive = Archive.create(root, "manifest.jsonl")
-    for url, (title, body) in (corpus or CORPUS).items():
-        html = f"<html><head><title>{title}</title></head><body>{body}</body></html>"
-        doc_id = document_id(url)
-        member = archive.write_page(doc_id, html)
-        archive.append(
-            RunRecord(
-                doc_id=doc_id,
-                url=url,
-                final_url=url,
-                fetched_at="2026-01-15T10:30:02+00:00",
-                status=200,
-                content_type="text/html",
-                title=title,
-                embedded_date=None,
-                body_bytes=len(html.encode("utf-8")),
-                archive_member=member,
-                seed_url=url,
-                depth=0,
-            )
-        )
-    archive.close()
-    return archive
+def build_corpus(root: Path, corpus: dict[str, tuple[str, str]] | None = None):
+    """本组测试沿用"归档在 root 下"的写法，转调共用构建器。"""
+    return build_archive(root, corpus)
 
 
 @pytest.fixture

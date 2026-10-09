@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 import zipfile
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from runtime import timestamped_dir
 
 from .link_extract import normalize_url
 
@@ -66,16 +67,7 @@ class Archive:
     @classmethod
     def create(cls, crawl_root: Path, manifest_name: str) -> Archive:
         """新建一次运行。run_id 用本地时间；同一秒内重复创建时追加序号。"""
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        crawl_root.mkdir(parents=True, exist_ok=True)
-
-        run_dir = crawl_root / stamp
-        suffix = 1
-        while run_dir.exists():
-            run_dir = crawl_root / f"{stamp}-{suffix}"
-            suffix += 1
-        run_dir.mkdir()
-        return cls(run_dir, manifest_name)
+        return cls(timestamped_dir(crawl_root), manifest_name)
 
     @classmethod
     def open(cls, run_dir: Path, manifest_name: str) -> Archive:
