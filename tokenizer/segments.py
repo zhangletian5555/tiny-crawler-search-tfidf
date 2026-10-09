@@ -6,8 +6,13 @@
 from __future__ import annotations
 
 import re
+import warnings
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+# 少数页面（例如引文导出、RSS）以 XML 声明开头，BeautifulSoup 会提示应换用 XML
+# 解析器。抓取语料里这类页面占比极低，用 HTML 解析器处理完全够用，为免刷屏屏蔽掉。
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # 中文语境里常见的日期写法，按"从具体到笼统"的顺序尝试
 _DATE_PATTERNS = (

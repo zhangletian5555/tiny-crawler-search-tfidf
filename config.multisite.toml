@@ -1,0 +1,34 @@
+# 五站点试跑的临时配置。用于初步搜索验证，跑完后可保留作参考。
+# 礼貌参数：1 秒间隔（对 .edu 站点更稳妥），总页数与单站页数都设硬上限。
+
+[paths]
+data_dir = "data"
+seeds_file = "resources/seeds.multisite.txt"
+stopwords = "tokenizer/stopwords_zh.txt"
+
+[storage]
+archive_format = "zip"
+manifest_name = "manifest.jsonl"
+
+[crawl]
+user_agent = "tiny-crawler-search-tfidf/0.2 (learning project; polite single-threaded crawler)"
+default_delay_seconds = 0.5
+respect_robots = true
+# 总预算要 >= 站点数 × 单站预算，否则先被处理的站点会把总预算吃光，
+# 后面的站点只能抓到首页（第一次跑 1000/250 就是这个现象）。
+max_pages = 1500
+max_pages_per_host = 250
+request_timeout = 15.0
+max_retries = 2
+retry_backoff_seconds = 3.0
+
+[index]
+title_weight = 2.0
+
+[search]
+k = 20
+
+[web]
+host = "127.0.0.1"
+port = 8000
+debug = false

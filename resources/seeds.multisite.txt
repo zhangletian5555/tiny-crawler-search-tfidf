@@ -1,0 +1,12 @@
+# 五站点试跑种子（用于初步搜索验证）。
+# 注意：化院原站 chem.ruc.edu.cn 现已全线 404（站点下线或迁移），
+# 改用其附属站 chemgroups.ruc.edu.cn 作为代表。
+# 信院 info.ruc.edu.cn 的 robots.txt 返回 403，抓取器会按"不允许"跳过该站——
+# 这里保留它，用于验证 robots 分支在真实环境中的行为。
+
+https://ai.ruc.edu.cn/
+http://info.ruc.edu.cn/
+http://www.phys.ruc.edu.cn/
+http://chemgroups.ruc.edu.cn/
+http://math.ruc.edu.cn/
+http://stat.ruc.edu.cn/

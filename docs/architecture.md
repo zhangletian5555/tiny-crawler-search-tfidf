@@ -157,7 +157,21 @@ config.toml ┘
 | P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py`、`runner.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，按 host 限速 | 已完成 |
 | P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 | 已完成 |
 | P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 | 已完成 |
-| P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 | 待做 |
+| P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 | 已完成 |
+
+## 8. Web 层
+
+```
+GET /          首页（含索引状态与文档数）
+GET /query     结果页（表单提交目标，服务端渲染）
+GET /search    JSON 接口：{"query", "count", "results":[{doc_id,title,url,score}]}
+```
+
+- 索引在应用启动时加载**一次**并常驻（参考代码也是这个做法），但加载失败时降级为
+  页面上的友好提示，而不是启动即崩；此时 `/search` 返回空结果而非 500。
+- 页面用服务端渲染 + 原生表单，静态资源只有一个 CSS 与一个极简 JS——这一层的价值在
+  于把检索结果呈现出来，不在于前端工程。
+- `k` 参数从 1 夹到 100，过长查询截断到 200 字符，避免异常输入打穿接口。
 
 ### 索引产物的规模参考
 
