@@ -28,7 +28,12 @@ def document_id(url: str) -> str:
 
 @dataclass(frozen=True)
 class RunRecord:
-    """manifest.jsonl 的一行，字段定义见 docs/architecture.md。"""
+    """manifest.jsonl 的一行，字段定义见 docs/architecture.md。
+
+    doc_id 由 final_url 计算：同一内容经不同入口（http/https、重定向、别名）
+    到达时会归并为一篇文档。final_url 是后加的字段，旧清单里没有，因此给予空
+    默认值——加载时回退为 url。
+    """
 
     doc_id: str
     url: str
@@ -42,6 +47,11 @@ class RunRecord:
     seed_url: str
     depth: int
     version: int = 1
+    final_url: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.final_url:
+            object.__setattr__(self, "final_url", self.url)
 
 
 class Archive:

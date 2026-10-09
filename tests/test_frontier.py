@@ -47,6 +47,30 @@ def test_bucket_limit_blocks_further_enqueue() -> None:
     assert frontier.enqueue(B + "1", 0, B) is True
 
 
+def test_dropped_urls_are_counted() -> None:
+    """被水位拒掉的链接必须可观测，否则会静默少收数据。"""
+    frontier = Frontier(bucket_limit=1)
+    assert frontier.dropped_count == 0
+
+    frontier.enqueue(A + "1", 0, A)
+    frontier.enqueue(A + "2", 0, A)
+    frontier.enqueue(A + "3", 0, A)
+    frontier.enqueue(B + "1", 0, B)  # 另一个 host，不该计入丢弃
+
+    assert frontier.dropped_count == 2
+    # 重复 URL 属于"已见过"，不算被丢弃
+    frontier.enqueue(A + "1", 0, A)
+    assert frontier.dropped_count == 2
+
+
+def test_force_does_not_count_as_dropped() -> None:
+    frontier = Frontier(bucket_limit=1)
+    frontier.enqueue(A + "1", 0, A)
+
+    assert frontier.enqueue(A + "2", 0, A, force=True) is True
+    assert frontier.dropped_count == 0
+
+
 def test_force_ignores_bucket_limit_for_resume() -> None:
     frontier = Frontier(bucket_limit=1)
     frontier.enqueue(A + "1", 0, A)

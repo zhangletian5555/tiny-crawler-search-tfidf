@@ -33,12 +33,14 @@ class FakeResponse:
         content: bytes = HTML_BODY,
         content_type: str = "text/html; charset=utf-8",
         apparent_encoding: str | None = "utf-8",
+        url: str = "",
     ) -> None:
         self.status_code = status_code
         self.content = content
         self.headers = {"Content-Type": content_type} if content_type else {}
         self.encoding = None
         self.apparent_encoding = apparent_encoding
+        self.url = url
 
     @property
     def ok(self) -> bool:

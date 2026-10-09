@@ -23,13 +23,19 @@ class PendingPage:
 
 
 class Frontier:
-    """按 host 分桶的 FIFO 待抓队列。"""
+    """按 host 分桶的 FIFO 待抓队列。
+
+    bucket_limit 是"单 host 待抓队列的水位"，不是"单 host 抓取页数上限"——后者
+    是 crawl.max_pages_per_host，属于抓取预算。两者混用会导致列表页一多就把链接
+    永久丢掉（丢弃的 URL 既不在队列里，也不在检查点里，续爬也补不回来）。
+    """
 
     def __init__(self, bucket_limit: int = 200) -> None:
         self._buckets: dict[str, deque[PendingPage]] = {}
         self._order: deque[str] = deque()
         self._seen: set[str] = set()
         self._bucket_limit = bucket_limit
+        self._dropped = 0
 
     @property
     def seen_count(self) -> int:
@@ -38,6 +44,11 @@ class Frontier:
     @property
     def pending_count(self) -> int:
         return sum(len(bucket) for bucket in self._buckets.values())
+
+    @property
+    def dropped_count(self) -> int:
+        """因单 host 队列水位被拒的 URL 数（已计入 seen，不会再被入队）。"""
+        return self._dropped
 
     def mark_seen(self, url: str) -> None:
         """标记为已处理，之后不再入队。"""
@@ -56,6 +67,7 @@ class Frontier:
 
         bucket = self._buckets.setdefault(host, deque())
         if not force and len(bucket) >= self._bucket_limit:
+            self._dropped += 1
             return False
 
         if not bucket:

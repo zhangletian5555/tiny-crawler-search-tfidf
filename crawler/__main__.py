@@ -34,7 +34,8 @@ from .store import Archive
 from .throttle import HostThrottle, delay_for
 from tokenizer.segments import parts
 
-DEFAULT_BUCKET_LIMIT = 200
+DEFAULT_BUCKET_LIMIT = 1000
+PENDING_PER_CRAWLED_PAGE = 10  # 单 host 队列水位 = 抓取预算的 10 倍
 STATE_FILENAME = "crawl_state.json"
 
 
@@ -117,8 +118,16 @@ def _state_path(settings: Settings) -> Path:
 
 
 def _bucket_limit(settings: Settings) -> int:
+    """单 host 待抓队列水位。
+
+    它是"排队水位"，不是"抓取页数上限"（后者是 crawl.max_pages_per_host）。
+    水位必须明显大于抓取预算：实测单个学院站的列表页一页就能给出约 500 条链接，
+    水位太低会让链接在入队时被拒，而它们既不在队列里、也不在检查点里，续爬也
+    补不回来。这里取"预算的 10 倍"与 1000 的较大值——水位只影响检查点大小
+    （每条几十字节），不设上限的代价远小于静默丢链接。
+    """
     per_host = settings.crawl.max_pages_per_host
-    return per_host if per_host > 0 else DEFAULT_BUCKET_LIMIT
+    return max(DEFAULT_BUCKET_LIMIT, per_host * PENDING_PER_CRAWLED_PAGE)
 
 
 def _start_run(settings: Settings) -> tuple[Archive, Frontier]:
@@ -143,22 +152,28 @@ def _resume_run(settings: Settings, state: CrawlState, run_dir: Path | None) -> 
     return archive, frontier
 
 
-def run_crawl(settings: Settings, args: argparse.Namespace) -> int:
+def run_crawl(
+    settings: Settings,
+    *,
+    resume: bool = False,
+    seeds_path: str | None = None,
+    run_dir: str | None = None,
+) -> int:
     state_path = _state_path(settings)
 
-    if args.resume:
+    if resume:
         state = load_state(state_path)
         if state is None:
             print(f"没有可用的断点：{state_path}", file=sys.stderr)
             return 2
         archive, frontier = _resume_run(
-            settings, state, Path(args.run_dir) if args.run_dir else None
+            settings, state, Path(run_dir) if run_dir else None
         )
         crawled_count = state.crawled_count
     else:
         archive, frontier = _start_run(settings)
         crawled_count = 0
-        seed_file = Path(args.seeds) if args.seeds else Path(settings.paths.seeds_file)
+        seed_file = Path(seeds_path) if seeds_path else Path(settings.paths.seeds_file)
         try:
             seeds = read_seeds(seed_file)
         except SeedFileError as error:
@@ -167,13 +182,16 @@ def run_crawl(settings: Settings, args: argparse.Namespace) -> int:
         for seed in seeds:
             frontier.enqueue(seed, depth=0, seed_url=seed)
 
+    queue_budget = _bucket_limit(settings)
     print(f"运行目录：{archive.run_dir}")
-    print(f"种子数  ：{len(frontier.as_list())}，单 host 上限 {settings.crawl.max_pages_per_host}，"
-          f"总页数上限 {settings.crawl.max_pages or '不限'}，间隔 {settings.crawl.default_delay_seconds}s")
+    print(
+        f"抓取预算：单 host {settings.crawl.max_pages_per_host} 页，"
+        f"总计 {settings.crawl.max_pages or '不限'} 页，间隔 {settings.crawl.default_delay_seconds}s"
+    )
+    print(f"待抓队列：{frontier.pending_count} 条（单 host 水位 {queue_budget}）")
 
     stop = _StopFlag()
-    progress = Progress(frontier)
-    progress.count = crawled_count
+    progress = Progress(frontier, initial_count=crawled_count)
 
     crawler = Crawler(
         archive=archive,
@@ -198,6 +216,10 @@ def run_crawl(settings: Settings, args: argparse.Namespace) -> int:
 
     print(f"\n完成：本次新增 {added} 页，累计 {crawled_count + added} 页，"
           f"待抓 {frontier.pending_count} 条，已见 {frontier.seen_count} 条")
+    if frontier.dropped_count:
+        print(f"注意：有 {frontier.dropped_count} 条链接因单 host 队列水位"
+              f"（{queue_budget}）未能入队，本次不会抓取；"
+              f"如需收录请调大 max_pages_per_host 或分开多次运行")
     print(f"归档：{archive.pages_path}")
     print(f"清单：{archive.manifest_path}")
     return 0
@@ -242,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.print_config:
+        # 这里打印的必须是"合并 --set 之后"的生效配置，否则 --print-config
+        # 就失去了排障价值
         seed_file = Path(args.seeds) if args.seeds else Path(settings.paths.seeds_file)
         try:
             seeds = read_seeds(seed_file)
@@ -255,7 +279,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fetch":
         return run_fetch(settings, args.url)
     if args.command == "run":
-        return run_crawl(settings, args)
+        return run_crawl(
+            settings,
+            resume=args.resume,
+            seeds_path=args.seeds,
+            run_dir=args.run_dir,
+        )
 
     parser.print_help()
     return 1

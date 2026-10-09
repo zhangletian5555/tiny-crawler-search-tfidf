@@ -12,10 +12,12 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+import requests
+
 from config import CrawlConfig
 
 from .fetcher import FetchResult, create_session, fetch_page
-from .frontier import Frontier
+from .frontier import Frontier, PendingPage
 from .link_extract import extract_links
 from .robots import RobotsCache
 from .store import Archive, RunRecord, document_id
@@ -34,6 +36,8 @@ class Crawler:
         respect_robots: bool = True,
         on_page: Callable[[RunRecord], None] | None = None,
         on_note: Callable[[str], None] | None = None,
+        session: requests.Session | None = None,
+        robots: RobotsCache | None = None,
     ) -> None:
         self.archive = archive
         self.frontier = frontier
@@ -42,14 +46,20 @@ class Crawler:
         self.on_page = on_page
         self.on_note = on_note or (lambda note: None)
 
-        self.session = create_session(config.user_agent)
-        self.robots = RobotsCache(self.session, config.user_agent, config.request_timeout)
+        self._owns_session = session is None
+        self.session = session or create_session(config.user_agent)
+        self.robots = robots or RobotsCache(
+            self.session, config.user_agent, config.request_timeout
+        )
         self.throttle = make_throttle(
             HostThrottle(),
             config.default_delay_seconds,
             self.robots if respect_robots else None,
         )
         self.crawled_count = 0
+        # 已写入归档的主键。zip 的 writestr 不会覆盖同名成员，重复写入会留下
+        # 取不到的滞留数据，因此在写入前就按主键去重。
+        self._written: set[str] = set()
 
     def run(self, should_stop: Callable[[], bool] | None = None) -> int:
         """执行抓取，返回本次新抓取的页面数。"""
@@ -62,7 +72,8 @@ class Crawler:
                 self._visit(page)
         finally:
             self.archive.close()
-            self.session.close()
+            if self._owns_session:
+                self.session.close()
         return self.crawled_count
 
     # ------------------------------------------------------------------
@@ -73,7 +84,7 @@ class Crawler:
         limit = self.config.max_pages
         return limit <= 0 or self.crawled_count < limit
 
-    def _visit(self, page) -> None:  # type: ignore[no-untyped-def]
+    def _visit(self, page: PendingPage) -> None:
         if self.respect_robots:
             rules = self.robots.rules_for(page.url)
             if not rules.allows(page.url, self.config.user_agent):
@@ -92,20 +103,27 @@ class Crawler:
         for link in extract_links(result.html or "", result.url):
             self.frontier.enqueue(link, page.depth + 1, page.seed_url)
 
-    def _record(self, page, result: FetchResult):  # type: ignore[no-untyped-def]
-        """把一次抓取结果写入归档，返回记录；非网页内容不写入。"""
+    def _record(self, page: PendingPage, result: FetchResult) -> RunRecord | None:
+        """把一次抓取结果写入归档，返回记录；非网页内容或重复页面返回 None。"""
         if not result.ok:
             self.on_note(f"抓取失败：{page.url}（{result.error}）")
             return None
 
-        title, body = parts(result.html or "")
-        doc_id = document_id(result.url)
         html = result.html or ""
+        title, body = parts(html)
+        # 主键取自重定向后的最终 URL，这样同一内容的不同入口会归并为一篇文档
+        doc_id = document_id(result.final_url)
+        if doc_id in self._written:
+            self.on_note(f"重复页面，跳过：{result.final_url}（请求自 {page.url}）")
+            return None
+
         member = self.archive.write_page(doc_id, html)
+        self._written.add(doc_id)
 
         record = RunRecord(
             doc_id=doc_id,
             url=result.url,
+            final_url=result.final_url,
             fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             status=result.status,
             content_type=result.content_type,
@@ -123,10 +141,15 @@ class Crawler:
 class Progress:
     """把抓取进度打印到标准输出。"""
 
-    def __init__(self, frontier: Frontier, started: float | None = None) -> None:
+    def __init__(
+        self,
+        frontier: Frontier,
+        started: float | None = None,
+        initial_count: int = 0,
+    ) -> None:
         self.frontier = frontier
         self.started = started if started is not None else time.monotonic()
-        self.count = 0
+        self.count = initial_count
 
     def page(self, record: RunRecord) -> None:
         self.count += 1

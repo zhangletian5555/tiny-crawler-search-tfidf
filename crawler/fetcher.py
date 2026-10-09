@@ -30,11 +30,17 @@ class FetchResult:
     """一次抓取的结果。html 为 None 时 error 必然非空。"""
 
     url: str
+    final_url: str = ""
     status: int | None = None
     html: str | None = None
     content_type: str = ""
     encoding: str = ""
     error: str = ""
+
+    def __post_init__(self) -> None:
+        # 未显式给出最终 URL 时（失败、未发生重定向）等同于请求 URL
+        if not self.final_url:
+            object.__setattr__(self, "final_url", self.url)
 
     @property
     def ok(self) -> bool:
@@ -115,8 +121,12 @@ def _attempt(url: str, session: requests.Session, timeout: float) -> FetchResult
 
         raw = response.content
         encoding = detect_encoding(content_type, raw)
+        # getattr 兜底：跟随重定向后的最终 URL 由 requests 提供，测试替身或
+        # 其它会话实现可能没有该属性，此时退回请求 URL
+        final_url = getattr(response, "url", "") or url
         return FetchResult(
             url=url,
+            final_url=normalize_url(final_url),
             status=response.status_code,
             html=raw.decode(encoding, errors="replace"),
             content_type=content_type,

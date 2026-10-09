@@ -37,27 +37,36 @@ CONFIG = CrawlConfig(
 
 
 class SiteSession:
-    """按 URL 返回固定页面的假会话。"""
+    """按 URL 返回固定页面的假会话；redirects 模拟服务端重定向。"""
 
-    def __init__(self, pages: dict[str, str]) -> None:
+    def __init__(self, pages: dict[str, str], redirects: dict[str, str] | None = None) -> None:
         self.pages = pages
+        self.redirects = redirects or {}
         self.calls: list[str] = []
 
     def get(self, url: str, **kwargs: object) -> FakeResponse:
         self.calls.append(url)
-        if url not in self.pages:
-            return FakeResponse(status_code=404)
-        return FakeResponse(text=self.pages[url])
+        final = self.redirects.get(url, url)
+        if final not in self.pages:
+            return FakeResponse(status_code=404, url=final)
+        return FakeResponse(text=self.pages[final], url=final)
 
     def close(self) -> None:
         return None
 
 
 class FakeResponse:
-    def __init__(self, status_code: int = 200, text: str = "", content_type: str = "text/html") -> None:
+    def __init__(
+        self,
+        status_code: int = 200,
+        text: str = "",
+        content_type: str = "text/html",
+        url: str = "",
+    ) -> None:
         self.status_code = status_code
         self.text = text
         self.content = text.encode("utf-8")
+        self.url = url
         self.headers = {"Content-Type": content_type}
         self.encoding = "utf-8"
         self.apparent_encoding = "utf-8"
@@ -77,14 +86,14 @@ def build(tmp_path: Path, config: CrawlConfig | None = None) -> tuple[Crawler, A
     archive = Archive.create(tmp_path / "crawl", "manifest.jsonl")
     frontier = Frontier()
     frontier.enqueue(HOME, depth=0, seed_url=HOME)
+    session = SiteSession(PAGES)
     crawler = Crawler(
         archive=archive,
         frontier=frontier,
         config=config or CONFIG,
         respect_robots=False,
+        session=session,  # type: ignore[arg-type]
     )
-    session = SiteSession(PAGES)
-    crawler.session = session  # type: ignore[assignment]
     return crawler, archive, frontier, session
 
 
@@ -168,8 +177,8 @@ def test_unreachable_page_is_not_archived(tmp_path: Path) -> None:
         config=CONFIG,
         respect_robots=False,
         on_note=notes.append,
+        session=SiteSession(PAGES),  # type: ignore[arg-type]
     )
-    crawler.session = SiteSession(PAGES)  # type: ignore[assignment]
 
     crawled = crawler.run()
 
@@ -183,26 +192,114 @@ def test_non_html_page_is_not_archived(tmp_path: Path) -> None:
     frontier = Frontier()
     frontier.enqueue("https://site.example/file.pdf", depth=0, seed_url=HOME)
     notes: list[str] = []
+
+    class PdfSession:
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            return FakeResponse(content_type="application/pdf", url=url)
+
+        def close(self) -> None:
+            return None
+
     crawler = Crawler(
         archive=archive,
         frontier=frontier,
         config=CONFIG,
         respect_robots=False,
         on_note=notes.append,
+        session=PdfSession(),  # type: ignore[arg-type]
     )
-
-    class PdfSession:
-        def get(self, url: str, **kwargs: object) -> FakeResponse:
-            return FakeResponse(content_type="application/pdf")
-
-        def close(self) -> None:
-            return None
-
-    crawler.session = PdfSession()  # type: ignore[assignment]
 
     assert crawler.run() == 0
     assert list(archive.load_records()) == []
     assert notes and "非网页内容" in notes[0]
+
+
+def test_document_is_keyed_by_final_url(tmp_path: Path) -> None:
+    """http/https、别名、重定向指向同一内容时只应归档一篇。"""
+    canonical = "https://site.example/canonical"
+    archive = Archive.create(tmp_path / "crawl", "manifest.jsonl")
+    frontier = Frontier()
+    frontier.enqueue("http://site.example/canonical", 0, "http://site.example/canonical")
+    frontier.enqueue(canonical, 0, canonical)
+    notes: list[str] = []
+    session = SiteSession(
+        {canonical: "<html><head><title>规范页</title></head><body>正文</body></html>"},
+        redirects={"http://site.example/canonical": canonical},
+    )
+    crawler = Crawler(
+        archive=archive,
+        frontier=frontier,
+        config=CONFIG,
+        respect_robots=False,
+        on_note=notes.append,
+        session=session,  # type: ignore[arg-type]
+    )
+
+    crawled = crawler.run()
+
+    records = list(archive.load_records())
+    assert crawled == 1
+    assert len(records) == 1
+    assert records[0].final_url == canonical
+    assert records[0].url == "http://site.example/canonical"  # 记录请求来源
+    assert any("重复页面" in note for note in notes)
+
+
+def test_duplicate_doc_id_is_not_written_to_zip_twice(tmp_path: Path) -> None:
+    import zipfile
+
+    canonical = "https://site.example/canonical"
+    archive = Archive.create(tmp_path / "crawl", "manifest.jsonl")
+    frontier = Frontier()
+    frontier.enqueue("https://site.example/a", 0, "https://site.example/a")
+    frontier.enqueue("https://site.example/b", 0, "https://site.example/b")
+    session = SiteSession(
+        {canonical: "<html><head><title>同一内容</title></head><body>正文</body></html>"},
+        redirects={
+            "https://site.example/a": canonical,
+            "https://site.example/b": canonical,
+        },
+    )
+    crawler = Crawler(
+        archive=archive,
+        frontier=frontier,
+        config=CONFIG,
+        respect_robots=False,
+        session=session,  # type: ignore[arg-type]
+    )
+
+    crawler.run()
+
+    with zipfile.ZipFile(archive.pages_path) as zf:
+        names = zf.namelist()
+    assert len(names) == len(set(names)), f"zip 里出现了重复成员：{names}"
+    assert len(list(archive.load_records())) == 1
+
+
+def test_legacy_manifest_without_final_url_still_loads(tmp_path: Path) -> None:
+    """final_url 是后加字段，旧清单必须仍可读。"""
+    import json
+
+    archive = Archive.create(tmp_path / "crawl", "manifest.jsonl")
+    legacy = {
+        "doc_id": "0123456789abcdef",
+        "url": "https://site.example/old",
+        "fetched_at": "2026-01-01T00:00:00+00:00",
+        "status": 200,
+        "content_type": "text/html",
+        "title": "旧记录",
+        "embedded_date": None,
+        "body_bytes": 10,
+        "archive_member": "0123456789abcdef.html",
+        "seed_url": "https://site.example/old",
+        "depth": 0,
+        "version": 1,
+    }
+    archive.manifest_path.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
+
+    record = next(archive.load_records())
+
+    assert record.final_url == "https://site.example/old"
 
 
 def test_links_are_only_crawled_once(tmp_path: Path) -> None:
