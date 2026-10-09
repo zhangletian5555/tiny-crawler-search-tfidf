@@ -1,0 +1,9 @@
+# 五个学院站点的种子（配合 config.colleges.toml 使用）。
+# 化院原站 chem.ruc.edu.cn 已下线（全线 404），改用其附属站 chemgroups.ruc.edu.cn。
+# 抓取范围由配置里的 crawl.allowed_hosts 限定，这五个之外一律不入队。
+
+https://ai.ruc.edu.cn/
+http://info.ruc.edu.cn/
+http://www.phys.ruc.edu.cn/
+http://math.ruc.edu.cn/
+http://chemgroups.ruc.edu.cn/

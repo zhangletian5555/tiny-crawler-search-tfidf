@@ -32,6 +32,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# archive/ 是历史归档材料，保持原样（连格式都不改），不参与检查
+exclude = ["archive"]
 
 [tool.ruff.lint]
 # 未用导入/变量、常见错误、导入排序、pyupgrade、bugbear、简化建议、推导式、返回值

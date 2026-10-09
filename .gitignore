@@ -14,5 +14,6 @@ dist/
 .ruff_cache/
 .mypy_cache/
 
-# 参考代码（历史作业素材，仅本地保留）
-ref/
+# 归档材料说明见 archive/README.md；它需要入库，因此不再忽略
+# 抓取与索引产物
+data/

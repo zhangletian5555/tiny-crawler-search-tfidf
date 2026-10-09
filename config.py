@@ -105,6 +105,7 @@ class CrawlConfig:
     request_timeout: float
     max_retries: int
     retry_backoff_seconds: float
+    allowed_hosts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -197,6 +198,7 @@ class Settings:
                     "crawl.retry_backoff_seconds",
                     minimum=0.0,
                 ),
+                allowed_hosts=_host_list(crawler_args.get("allowed_hosts")),
             ),
             index=IndexConfig(
                 title_weight=_number(
@@ -386,3 +388,12 @@ def _choice(value: Any, allowed: tuple[str, ...], key: str) -> str:
     if value not in allowed:
         raise ConfigError(f"{key} 必须是 {'/'.join(allowed)} 之一，收到 {value!r}")
     return value
+
+
+def _host_list(value: Any) -> tuple[str, ...]:
+    """抓取范围限制：允许的 host 列表。缺省或空列表表示不限。"""
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ConfigError("crawl.allowed_hosts 需要字符串数组，例如 [\"ai.ruc.edu.cn\"]")
+    return tuple(item.strip().lower() for item in value if item.strip())

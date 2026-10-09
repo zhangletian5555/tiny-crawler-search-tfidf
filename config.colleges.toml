@@ -1,0 +1,49 @@
+# 五学院站点的"全面"抓取配置：限定在给定 host 范围内，尽量收全其下文档。
+#
+# 与 config.multisite.toml 的区别：
+#   1. crawl.allowed_hosts 限定抓取范围——站外链接不入队，预算全部花在目标站点上；
+#   2. 两个预算都放大到"够用"的量级（单站 5000 页 / 总计 25000 页），
+#      因为目标是"尽量收全"而不是抽样。
+#
+# 化院说明：原站 chem.ruc.edu.cn 已全线 404（站点下线或迁移），
+# 这里用其附属站 chemgroups.ruc.edu.cn 代替。
+
+[paths]
+data_dir = "data"
+seeds_file = "resources/seeds.colleges.txt"
+stopwords = "tokenizer/stopwords_zh.txt"
+
+[storage]
+archive_format = "zip"
+manifest_name = "manifest.jsonl"
+
+[crawl]
+user_agent = "tiny-crawler-search-tfidf/0.2 (learning project; polite single-threaded crawler)"
+default_delay_seconds = 0.3
+respect_robots = true
+
+# 只收这些域及其子域下的文档
+allowed_hosts = [
+    "ai.ruc.edu.cn",
+    "info.ruc.edu.cn",
+    "phys.ruc.edu.cn",
+    "math.ruc.edu.cn",
+    "chemgroups.ruc.edu.cn",
+]
+
+max_pages = 25000
+max_pages_per_host = 5000
+request_timeout = 15.0
+max_retries = 2
+retry_backoff_seconds = 3.0
+
+[index]
+title_weight = 2.0
+
+[search]
+k = 20
+
+[web]
+host = "127.0.0.1"
+port = 8000
+debug = false

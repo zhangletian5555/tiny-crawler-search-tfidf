@@ -100,6 +100,29 @@ max_pages_per_host = 250    # 单站预算
 **总预算应不小于站点数 × 单站预算**。否则先被处理的站点会把总预算吃光，排在后面的站点
 只能抓到首页——这一点在 [docs/decisions.md](docs/decisions.md) 的 D20 里有实测记录。
 
+### 限定 host 范围的全面抓取
+
+如果只想收某几个站点（及其子域）下的文档，用 `crawl.allowed_hosts` 限定范围：
+
+```toml
+[crawl]
+allowed_hosts = ["ai.ruc.edu.cn", "info.ruc.edu.cn", "phys.ruc.edu.cn"]
+```
+
+范围外的链接不入队，预算全部花在目标站点上。按域后缀匹配，因此登记
+`phys.ruc.edu.cn` 会同时允许 `www.phys.ruc.edu.cn`。
+
+仓库里的 `config.colleges.toml` 就是这么配的（五个学院站点，单站 5000 页 / 总计 25000 页）：
+
+```powershell
+python -m crawler  --config config.colleges.toml run
+python -m indexing --config config.colleges.toml
+python -m web      --config config.colleges.toml
+```
+
+不设 `allowed_hosts` 时爬虫会跟随链接走出种子站点（实测会走到学校新闻网、学校主页，甚至
+一个校内私有地址），要限定范围就把它配上。
+
 ### 试跑结果与已知边界
 
 一次实际试跑（`max_pages = 1500`，五个学院站点 + 学校新闻网等被顺链发现）：
@@ -127,9 +150,9 @@ max_pages_per_host = 250    # 单站预算
 
 ### 后续可做的清理
 
-- `ref/` 已完成使命（其中的方法与坑都已整理进 [docs/decisions.md](docs/decisions.md)），
-  确认无用后可移出仓库，仓库体积会降到 0.1 MB 量级。
-- 若要限定抓取范围，优先加的是域白名单，而不是调大预算。
+- 归档材料已移入 `archive/`（见 [archive/README.md](archive/README.md)），保留在仓库内以便
+  出题与评审追溯；任何代码都不导入它。
+- 若要限定抓取范围，用 `crawl.allowed_hosts`，而不是调大预算。
 
 ## 目录
 
@@ -144,7 +167,7 @@ max_pages_per_host = 250    # 单站预算
 | `data/` | 运行时数据，不进版本库 |
 | `resources/` | 种子示例等静态输入 |
 | `docs/` | 架构与决策文档 |
-| `ref/` | 历史作业代码，只读参考，不被任何代码导入 |
+| `archive/` | 归档材料（含课程作业时期的原始代码，只读参考，任何代码都不导入它） |
 
 ## 测试
 

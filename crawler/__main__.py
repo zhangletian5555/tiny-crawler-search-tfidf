@@ -201,6 +201,10 @@ def run_crawl(
         f"抓取预算：单 host {settings.crawl.max_pages_per_host} 页，"
         f"总计 {settings.crawl.max_pages or '不限'} 页，间隔 {settings.crawl.default_delay_seconds}s"
     )
+    if settings.crawl.allowed_hosts:
+        print(f"抓取范围：{', '.join(settings.crawl.allowed_hosts)}（含其子域）")
+    else:
+        print("抓取范围：不限（会跟随链接走到任意站点）")
     print(f"待抓队列：{frontier.pending_count} 条（单 host 水位 {queue_budget}）")
 
     stop = _StopFlag()
@@ -239,6 +243,8 @@ def run_crawl(
     if crawler.budget_skipped:
         print(f"注意：有 {crawler.budget_skipped} 条待抓链接因单 host 抓取预算"
               f"（{settings.crawl.max_pages_per_host} 页）被放弃，本次不会抓取")
+    if crawler.out_of_scope:
+        print(f"范围外链接：{crawler.out_of_scope} 条因不在 allowed_hosts 内未入队")
     print(f"归档：{archive.pages_path}")
     print(f"清单：{archive.manifest_path}")
     return 0

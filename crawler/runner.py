@@ -20,7 +20,7 @@ from tokenizer.segments import embedded_date, parts
 
 from .fetcher import FetchResult, create_session, fetch_page
 from .frontier import Frontier, PendingPage
-from .link_extract import extract_links
+from .link_extract import extract_links, host_is_allowed
 from .robots import RobotsCache
 from .store import Archive, RunRecord, document_id
 from .throttle import HostThrottle, make_throttle
@@ -61,6 +61,8 @@ class Crawler:
         self._crawled_per_host: dict[str, int] = defaultdict(int)
         # 因单 host 预算被丢弃的待抓页面数
         self.budget_skipped = 0
+        # 因超出 allowed_hosts 范围而未入队的链接数（未设范围时恒为 0）
+        self.out_of_scope = 0
         # 已写入归档的主键。zip 的 writestr 不会覆盖同名成员，重复写入会留下
         # 取不到的滞留数据，因此在写入前就按主键去重。
         self._written: set[str] = set()
@@ -109,6 +111,9 @@ class Crawler:
             self.on_page(record)
 
         for link in extract_links(result.html or "", result.url):
+            if not host_is_allowed(link, self.config.allowed_hosts):
+                self.out_of_scope += 1
+                continue
             self.frontier.enqueue(link, page.depth + 1, page.seed_url)
 
     def _host_budget_exhausted(self, host: str) -> bool:

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
@@ -69,6 +70,28 @@ def url_origin(url: str) -> str | None:
     if split.scheme not in ("http", "https") or not split.netloc:
         return None
     return f"{split.scheme}://{split.netloc.lower()}"
+
+
+def host_is_allowed(url: str, allowed_hosts: Collection[str]) -> bool:
+    """url 的 host 是否在允许范围内。
+
+    allowed_hosts 为空表示不限。非空时按"域后缀"匹配：登记 `ruc.edu.cn` 会同时
+    允许 `ai.ruc.edu.cn`、`www.phys.ruc.edu.cn`；只登记 `ai.ruc.edu.cn` 则只允许
+    它自己及其子域（本项目没有更深层子域的情况）。
+    """
+    if not allowed_hosts:
+        return True
+
+    host = url_host(url)
+    if host is None:
+        return False
+
+    # 去掉端口再比较
+    hostname = host.split(":", 1)[0]
+    return any(
+        hostname == allowed or hostname.endswith("." + allowed)
+        for allowed in allowed_hosts
+    )
 
 
 def extract_links(html: str, base_url: str) -> list[str]:

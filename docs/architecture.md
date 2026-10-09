@@ -116,6 +116,7 @@ score(q, d) = Σ_{t ∈ q} w(t, d) / doc_norm * q(t, q)
 | Crawl-delay | robots.txt 声明了 `Crawl-delay` 时，取它与 `default_delay_seconds` 中的较大值（按通配 `*` 查询，这是 `RobotFileParser` 能提供的方式） |
 | 限速粒度 | **按 host** 计时（不是按种子，也不是全局），同一 host 两次请求间隔不小于上述延迟；抓取 robots.txt 自身不计入该 host 的请求时刻 |
 | 抓取顺序 | 按 host 分桶的 FIFO：把一个 host 的待抓做完再换下一个。对站方友好，代价是慢站点会拖住后面的站点 |
+| 抓取范围 | `allowed_hosts` 为空表示不限（会顺链走到任意站点）；非空时按**域后缀**匹配——登记 `ruc.edu.cn` 会同时允许 `ai.ruc.edu.cn`、`www.phys.ruc.edu.cn`。范围外的链接不入队，并计入 `out_of_scope` 在结束时报告 |
 | 待抓水位 | 单 host 待抓队列有水位上限（取 `max_pages_per_host * 10` 与 1000 的较大值），避免检查点被上万个 URL 撑大。**水位不是抓取预算**：超过水位的链接会被拒且不再入队，因此会被计入"未入队链接数"并在运行结束时提示——不能让它静默发生 |
 | 重试 | 失败重试 `max_retries` 次，第 n 次等待 `n * retry_backoff_seconds`，不立即重入队；4xx 不重试 |
 | 只抓网页 | 只接受 `text/html` 与 `application/xhtml+xml`，其余记录原因后跳过 |
