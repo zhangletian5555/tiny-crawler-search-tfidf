@@ -127,11 +127,11 @@ config.toml ┘
 
 ## 7. 里程碑
 
-| 阶段 | 内容 | 验收 |
-|---|---|---|
-| P0 | `config.py`、`config.toml`、`tokenizer/`、种子示例与读取、`crawler/__main__.py` 的 `--print-config` | `python -m pytest` 通过 |
-| P1 | `crawler/link_extract.py`、`crawler/fetcher.py` | 链接归一化测试通过，单页可抓取 |
-| P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，日志显示按 host 限速 |
-| P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 |
-| P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 |
-| P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 |
+| 阶段 | 内容 | 验收 | 状态 |
+|---|---|---|---|
+| P0 | `config.py`、`config.toml`、`tokenizer/`、种子示例与读取、`crawler/__main__.py` 的 `--print-config` | `python -m pytest` 通过 | 已完成 |
+| P1 | `crawler/link_extract.py`、`crawler/fetcher.py`、`python -m crawler fetch` | 测试通过 + 真实抓取可用 | 已完成 |
+| P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，日志显示按 host 限速 | 待做 |
+| P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 | 待做 |
+| P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 | 待做 |
+| P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 | 待做 |
