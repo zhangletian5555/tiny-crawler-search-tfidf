@@ -104,12 +104,27 @@ score(q, d) = Σ_{t ∈ q} w(t, d) / doc_norm * w_tf(t, q)
 
 | 机制 | 规则 |
 |---|---|
-| robots.txt | `respect_robots = true` 时先取该 host 的 robots.txt 并缓存；`Disallow` 的路径不抓 |
-| Crawl-delay | robots.txt 声明了 `Crawl-delay` 时，取它与 `default_delay_seconds` 中的较大值 |
-| 限速粒度 | **按 host** 计时（不是按种子，也不是全局），同一 host 两次请求间隔不小于上述延迟 |
-| 上限 | `max_pages` 限制单次运行总量，`max_pages_per_host` 限制单站深度扩张 |
-| 重试 | 失败重试 `max_retries` 次，第 n 次等待 `n * retry_backoff_seconds`，不立即重入队 |
-| 只抓网页 | 只接受 `text/html` 与 `application/xhtml+xml`，其余记录后跳过 |
+| robots.txt | `respect_robots = true` 时先取该 host 的 robots.txt 并按 host 缓存，判定分三种结果：**loaded** 按规则判定；**missing**（404 等）视为无限制；**unavailable**（401/403、取不到、URL 无主机名）按不允许处理 |
+| Crawl-delay | robots.txt 声明了 `Crawl-delay` 时，取它与 `default_delay_seconds` 中的较大值（按通配 `*` 查询，这是 `RobotFileParser` 能提供的方式） |
+| 限速粒度 | **按 host** 计时（不是按种子，也不是全局），同一 host 两次请求间隔不小于上述延迟；抓取 robots.txt 自身不计入该 host 的请求时刻 |
+| 抓取顺序 | 按 host 分桶的 FIFO：把一个 host 的待抓做完再换下一个。对站方友好，代价是慢站点会拖住后面的站点 |
+| 待抓上限 | `max_pages_per_host` 同时用作单 host 待抓队列上限——否则一次运行会把上万个 URL 写进检查点 |
+| 重试 | 失败重试 `max_retries` 次，第 n 次等待 `n * retry_backoff_seconds`，不立即重入队；4xx 不重试 |
+| 只抓网页 | 只接受 `text/html` 与 `application/xhtml+xml`，其余记录原因后跳过 |
+| 停止 | 队列空、达到 `max_pages`、或收到 Ctrl+C（只置位不抛异常，在安全点收尾并保存断点） |
+
+### 页面编码
+
+不少站点只回 `Content-Type: text/html` 而不给 charset，此时 requests 会退回其 HTTP
+默认值 ISO-8859-1，把 UTF-8 页面解成乱码。因此**不使用 `response.text`**，而是按
+下面的顺序判定编码后自行解码（`crawler/fetcher.py::detect_encoding`）：
+
+1. HTTP 头里的 `charset`；
+2. HTML 内部前 4 KB 的 `<meta charset=...>`；
+3. 退化为 `utf-8`。
+
+编码名会先用 `codecs.lookup` 校验，遇到不认识的写法退回 `utf-8`；解码失败用
+`errors="replace"` 兜底，不让单个坏字节中断整次抓取。
 
 ## 6. 配置加载机制
 
@@ -131,7 +146,7 @@ config.toml ┘
 |---|---|---|---|
 | P0 | `config.py`、`config.toml`、`tokenizer/`、种子示例与读取、`crawler/__main__.py` 的 `--print-config` | `python -m pytest` 通过 | 已完成 |
 | P1 | `crawler/link_extract.py`、`crawler/fetcher.py`、`python -m crawler fetch` | 测试通过 + 真实抓取可用 | 已完成 |
-| P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，日志显示按 host 限速 | 待做 |
+| P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py`、`runner.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，按 host 限速 | 已完成 |
 | P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 | 待做 |
 | P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 | 待做 |
 | P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 | 待做 |
