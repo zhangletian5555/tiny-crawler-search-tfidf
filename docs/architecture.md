@@ -151,6 +151,17 @@ config.toml ┘
 | P0 | `config.py`、`config.toml`、`tokenizer/`、种子示例与读取、`crawler/__main__.py` 的 `--print-config` | `python -m pytest` 通过 | 已完成 |
 | P1 | `crawler/link_extract.py`、`crawler/fetcher.py`、`python -m crawler fetch` | 测试通过 + 真实抓取可用 | 已完成 |
 | P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py`、`runner.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，按 host 限速 | 已完成 |
-| P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 | 待做 |
+| P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 | 已完成 |
 | P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 | 待做 |
 | P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 | 待做 |
+
+### 索引产物的规模参考
+
+以 15 篇真实页面（单站点）为例，便于估算后续语料规模：
+
+| 文件 | 大小 | 内容 |
+|---|---|---|
+| `terms.jsonl` | 258 KB | 2732 个词条 |
+| `stats.json` | 68 KB | idf + 文档范数 |
+| `docs.jsonl` | 2.7 KB | 15 篇文档元数据 |
+| `meta.json` | 0.2 KB | 版本与来源 |
