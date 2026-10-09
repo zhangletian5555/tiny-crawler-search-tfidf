@@ -236,6 +236,9 @@ def run_crawl(
         print(f"注意：有 {frontier.dropped_count} 条链接因单 host 队列水位"
               f"（{queue_budget}）未能入队，本次不会抓取；"
               f"如需收录请调大 max_pages_per_host 或分开多次运行")
+    if crawler.budget_skipped:
+        print(f"注意：有 {crawler.budget_skipped} 条待抓链接因单 host 抓取预算"
+              f"（{settings.crawl.max_pages_per_host} 页）被放弃，本次不会抓取")
     print(f"归档：{archive.pages_path}")
     print(f"清单：{archive.manifest_path}")
     return 0

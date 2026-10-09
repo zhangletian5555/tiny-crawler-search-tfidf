@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import time
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -56,6 +57,10 @@ class Crawler:
             self.robots if respect_robots else None,
         )
         self.crawled_count = 0
+        # 单 host 已抓页数：max_pages_per_host 是抓取预算，必须真正生效
+        self._crawled_per_host: dict[str, int] = defaultdict(int)
+        # 因单 host 预算被丢弃的待抓页面数
+        self.budget_skipped = 0
         # 已写入归档的主键。zip 的 writestr 不会覆盖同名成员，重复写入会留下
         # 取不到的滞留数据，因此在写入前就按主键去重。
         self._written: set[str] = set()
@@ -84,6 +89,9 @@ class Crawler:
         return limit <= 0 or self.crawled_count < limit
 
     def _visit(self, page: PendingPage) -> None:
+        if self._host_budget_exhausted(page.host):
+            return
+
         if self.respect_robots:
             rules = self.robots.rules_for(page.url)
             if not rules.allows(page.url, self.config.user_agent):
@@ -96,11 +104,32 @@ class Crawler:
             return
 
         self.crawled_count += 1
+        self._crawled_per_host[page.host] += 1
         if self.on_page is not None:
             self.on_page(record)
 
         for link in extract_links(result.html or "", result.url):
             self.frontier.enqueue(link, page.depth + 1, page.seed_url)
+
+    def _host_budget_exhausted(self, host: str) -> bool:
+        """该 host 是否已达抓取预算；达到则把它的待抓页面整批丢掉。
+
+        丢掉的 URL 不标记为已见，因此别的页面再链到它们时会被重新入队、再被
+        本次判断丢掉——重复入队是有界的（bounded by 该 host 的出链数），换来的
+        好处是不必为"已放弃的 host"维护一份额外的已见集合。
+        """
+        budget = self.config.max_pages_per_host
+        if budget <= 0 or self._crawled_per_host.get(host, 0) < budget:
+            return False
+
+        dropped = self.frontier.drop_host(host)
+        if dropped:
+            self.budget_skipped += dropped
+            self.on_note(
+                f"{host} 已达单 host 上限 {budget} 页，"
+                f"放弃其余 {dropped} 条待抓链接（如需收录请调大 max_pages_per_host）"
+            )
+        return True
 
     def _record(self, page: PendingPage, result: FetchResult) -> RunRecord | None:
         """把一次抓取结果写入归档，返回记录；非网页内容或重复页面返回 None。"""

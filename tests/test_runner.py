@@ -154,6 +154,81 @@ def test_max_pages_stops_the_run(tmp_path: Path) -> None:
     assert frontier.pending_count > 0  # 还有没抓的，只是被上限挡住了
 
 
+def test_per_host_budget_is_enforced(tmp_path: Path) -> None:
+    """max_pages_per_host 是抓取预算，必须真的限制单站页数。
+
+    语料：site.example 有 3 页可抓（首页 → about → team），另有一个外站。
+    上限设为 1 时只应抓该 host 的第一页；外站不受影响。
+    """
+    crawler, archive, _, _ = build(tmp_path, replace(CONFIG, max_pages_per_host=1))
+
+    crawler.run()
+
+    records = list(archive.load_records())
+    home_pages = [r for r in records if r.url.startswith("https://site.example")]
+    others = [r for r in records if r.url.startswith("https://other.example")]
+
+    assert len(home_pages) == 1
+    assert home_pages[0].url == HOME
+    assert others, "外站不应受 site.example 的预算影响"
+
+
+def test_zero_per_host_budget_means_unlimited(tmp_path: Path) -> None:
+    crawler, archive, _, _ = build(tmp_path, replace(CONFIG, max_pages_per_host=0))
+
+    crawler.run()
+
+    assert len(list(archive.load_records())) == 4
+    assert crawler.budget_skipped == 0
+
+
+def test_budget_drops_the_remaining_queue_of_that_host() -> None:
+    """达到预算后应把该 host 的整批待抓页面丢掉，而不是逐条出队再跳过。
+
+    这正是 250 页上限却抓了 800 多页同一站点的那个 bug 的回归测试：首页一次
+    给出 8 条同站链接，上限设为 1 时，除首页外其余 7 条都应在预算判定处被丢。
+    """
+    import tempfile
+
+    site = "https://wide.example/"
+    links = "".join(f'<a href="page{i}">x</a>' for i in range(1, 9))
+    pages = {site: f"<html><head><title>首页</title></head><body>{links}</body></html>"}
+    for index in range(1, 9):
+        child = f"{site}page{index}"
+        pages[child] = f"<html><head><title>{child}</title></head><body>正文</body></html>"
+
+    class WideSession:
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            if url not in pages:
+                return FakeResponse(status_code=404, url=url)
+            return FakeResponse(text=pages[url], url=url)
+
+        def close(self) -> None:
+            return None
+
+    with tempfile.TemporaryDirectory() as raw:
+        root = Path(raw)
+        archive = Archive.create(root / "crawl", "manifest.jsonl")
+        frontier = Frontier()
+        frontier.enqueue(site, 0, site)
+        notes: list[str] = []
+        crawler = Crawler(
+            archive=archive,
+            frontier=frontier,
+            config=replace(CONFIG, max_pages_per_host=1),
+            respect_robots=False,
+            on_note=notes.append,
+            session=WideSession(),  # type: ignore[arg-type]
+        )
+
+        crawled = crawler.run()
+
+        assert crawled == 1
+        assert crawler.budget_skipped == 7  # 8 条同站链接减去已被抓的首页
+        assert frontier.pending_in_host("wide.example") == 0
+        assert len([note for note in notes if "单 host 上限" in note]) == 1
+
+
 def test_should_stop_ends_the_run_early(tmp_path: Path) -> None:
     crawler, _, _, session = build(tmp_path)
     calls = {"n": 0}

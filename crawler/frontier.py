@@ -97,6 +97,19 @@ class Frontier:
         bucket = self._buckets.get(host)
         return len(bucket) if bucket else 0
 
+    def drop_host(self, host: str) -> int:
+        """丢弃某个 host 的全部待抓页面，返回条数。
+
+        用于该 host 已达抓取预算的情况：若只是逐条跳过，穷尽型站点会用几千条
+        待抓页面把总预算耗光（每次出队都要走一遍 fetch 前的判断）。
+        """
+        bucket = self._buckets.pop(host, None)
+        if not bucket:
+            return 0
+        if host in self._order:
+            self._order.remove(host)
+        return len(bucket)
+
     def as_list(self) -> list[PendingPage]:
         """导出全部待抓页面，用于写检查点。"""
         pages: list[PendingPage] = []
