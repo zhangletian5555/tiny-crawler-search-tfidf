@@ -57,6 +57,11 @@ class IndexStats:
     def document_count(self) -> int:
         return len(self.documents)
 
+    @property
+    def idf(self) -> dict[str, float]:
+        """词 -> idf。公式只在 build_index 里实现一处，这里只是取出来。"""
+        return {term.term: term.idf for term in self.terms}
+
 
 def build_index(
     crawl_dir: Path,
