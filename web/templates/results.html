@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{{ query or "搜索" }} · 小型搜索引擎{% endblock %}
+
+{% block content %}
+<form class="search-form" action="{{ url_for('search.query') }}" method="get" role="search">
+    <input
+        type="search"
+        name="key"
+        id="query-input"
+        value="{{ query }}"
+        placeholder="输入关键词"
+        autocomplete="off"
+        aria-label="搜索关键词"
+    >
+    <button type="submit">搜索</button>
+</form>
+
+{% if query %}
+    {% if results %}
+        <p class="result-count">「{{ query }}」命中 {{ results|length }} 条</p>
+        <ol class="results">
+            {% for result in results %}
+            <li class="result">
+                <a class="result-title" href="{{ result.url }}" rel="noopener noreferrer">
+                    {{ result.title or "(无标题)" }}
+                </a>
+                <div class="result-url">{{ result.url }}</div>
+                <div class="result-score">score {{ "%.5f"|format(result.score) }}</div>
+            </li>
+            {% endfor %}
+        </ol>
+    {% else %}
+        <p class="result-count">「{{ query }}」没有命中任何文档。</p>
+    {% endif %}
+{% else %}
+    <p class="result-count">请输入关键词。</p>
+{% endif %}
+{% endblock %}

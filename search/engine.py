@@ -102,6 +102,16 @@ class SearchEngine:
         )
 
 
+def latest_index(index_root: Path) -> Path:
+    """取索引根目录下最新一次构建（构建目录按时间戳命名）。"""
+    if not index_root.is_dir():
+        raise FileNotFoundError(f"索引根目录不存在：{index_root}")
+    builds = sorted(path for path in index_root.iterdir() if path.is_dir())
+    if not builds:
+        raise FileNotFoundError(f"还没有构建过索引：{index_root}")
+    return builds[-1]
+
+
 def load_index(index_dir: Path, stopwords: frozenset[str]) -> SearchEngine:
     """加载索引目录。格式版本不符时明确报错，而不是给出错误结果。"""
     meta = load_meta(index_dir)

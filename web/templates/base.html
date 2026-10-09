@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}小型搜索引擎{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+</head>
+<body>
+    <header class="site-header">
+        <a class="brand" href="{{ url_for('search.index') }}">小型搜索引擎</a>
+        <span class="brand-note">TF-IDF · 本地语料</span>
+    </header>
+
+    {% if error %}
+    <div class="notice notice-error">
+        <strong>索引不可用：</strong>{{ error }}
+        <p class="hint">请先执行 <code>python -m crawler run</code> 抓取，再执行 <code>python -m indexing</code> 建索引。</p>
+    </div>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer">
+        <span>数据来自本地抓取归档，仅供学习使用。</span>
+    </footer>
+
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>

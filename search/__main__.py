@@ -21,7 +21,7 @@ from config import (
 )
 from tokenizer.stopwords import StopwordFileError, load_stopwords
 
-from .engine import IndexFormatError, SearchEngine, load_index
+from .engine import IndexFormatError, SearchEngine, latest_index, load_index
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,16 +42,6 @@ def load_settings(args: argparse.Namespace) -> Settings:
     for override in overrides_from_args(args):
         settings = settings.override(override.section, override.key, override.raw_value)
     return settings
-
-
-def latest_index(index_root: Path) -> Path:
-    """取目录名最大的一次索引构建（目录按时间戳命名）。"""
-    if not index_root.is_dir():
-        raise FileNotFoundError(f"索引根目录不存在：{index_root}")
-    builds = sorted(path for path in index_root.iterdir() if path.is_dir())
-    if not builds:
-        raise FileNotFoundError(f"还没有构建过索引：{index_root}")
-    return builds[-1]
 
 
 def run_search(settings: Settings, args: argparse.Namespace) -> int:

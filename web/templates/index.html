@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form class="search-form" action="{{ url_for('search.query') }}" method="get" role="search">
+    <input
+        type="search"
+        name="key"
+        id="query-input"
+        placeholder="输入关键词，例如：人工智能 招生"
+        autocomplete="off"
+        autofocus
+        aria-label="搜索关键词"
+    >
+    <button type="submit">搜索</button>
+</form>
+
+<p class="corpus-note">
+    {% if document_count %}
+        当前索引包含 <strong>{{ document_count }}</strong> 篇文档。
+    {% else %}
+        尚无索引，请先抓取并构建索引。
+    {% endif %}
+</p>
+
+<p class="corpus-note">
+    分词使用 jieba，打分使用 TF-IDF（标题词频按权重放大）。多个词用空格分隔，
+    命中越多的文档排名越靠前。
+</p>
+{% endblock %}
