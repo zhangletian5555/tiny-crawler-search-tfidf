@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10"]
 
 [tool.setuptools]
 # 顶层模块与包；未列出的目录（data/、docs/、tests/ 等）不是发布内容
@@ -28,3 +28,23 @@ packages = ["tokenizer", "crawler", "indexing", "search", "web"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# 未用导入/变量、常见错误、导入排序、pyupgrade、bugbear、简化建议、推导式、返回值
+select = ["F", "E", "W", "I", "UP", "B", "SIM", "C4", "RET"]
+ignore = ["E501"]  # 行宽由 formatter 语义处理，长字符串不强制折行
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里的字面量与未用回调参数是固有噪声
+"tests/*" = ["ARG002", "B011"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+files = ["config.py", "crawler", "tokenizer", "indexing", "search", "web"]
+# 标准库存根与实际返回类型不符的两处已知误报（见 docs/decisions.md D15）
+disable_error_code = ["operator"]

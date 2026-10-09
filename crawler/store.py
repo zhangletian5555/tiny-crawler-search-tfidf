@@ -117,13 +117,6 @@ class Archive:
         archive.writestr(member, html)
         return member
 
-    def read_page(self, member: str) -> str:
-        """按成员名读取单页 HTML。"""
-        if self._zip is not None:
-            return self._zip.read(member).decode("utf-8")
-        with zipfile.ZipFile(self.pages_path, "r") as archive:
-            return archive.read(member).decode("utf-8")
-
     def append(self, record: RunRecord) -> None:
         """追加一条清单记录。先写 zip 再写清单，避免清单指向不存在的页面。"""
         with self.manifest_path.open("a", encoding="utf-8") as handle:

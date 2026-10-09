@@ -21,7 +21,9 @@ from config import (
     config_file_from_args,
     overrides_from_args,
     print_settings,
+    resolve_path,
 )
+from tokenizer.segments import parts
 
 from .fetcher import create_session, fetch_page
 from .frontier import Frontier
@@ -32,7 +34,6 @@ from .seeds import SeedFileError, read_seeds
 from .state import CrawlState, load_state, rebuild_frontier, save_state
 from .store import Archive
 from .throttle import HostThrottle, delay_for
-from tokenizer.segments import parts
 
 DEFAULT_BUCKET_LIMIT = 1000
 PENDING_PER_CRAWLED_PAGE = 10  # 单 host 队列水位 = 抓取预算的 10 倍
@@ -45,7 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="抓取种子站点并归档",
     )
     add_common_args(parser)
-    parser.add_argument("--seeds", metavar="PATH", help="种子文件路径，覆盖配置里的 paths.seeds_file")
+    parser.add_argument(
+        "--seeds",
+        metavar="PATH",
+        help="种子文件路径（相对路径以配置文件所在目录为基准），覆盖配置里的 paths.seeds_file",
+    )
     parser.add_argument(
         "--print-config", action="store_true", help="打印生效配置与种子数量后退出"
     )
@@ -113,10 +118,6 @@ def run_fetch(settings: Settings, url: str) -> int:
 # ----------------------------------------------------------------------
 
 
-def _state_path(settings: Settings) -> Path:
-    return Path(settings.paths.data_dir) / "state" / STATE_FILENAME
-
-
 def _bucket_limit(settings: Settings) -> int:
     """单 host 待抓队列水位。
 
@@ -131,12 +132,13 @@ def _bucket_limit(settings: Settings) -> int:
 
 
 def _start_run(settings: Settings) -> tuple[Archive, Frontier]:
-    archive = Archive.create(Path(settings.paths.data_dir) / "crawl", settings.storage.manifest_name)
-    frontier = Frontier(bucket_limit=_bucket_limit(settings))
-    return archive, frontier
+    archive = Archive.create(settings.paths.crawl_dir, settings.storage.manifest_name)
+    return archive, Frontier(bucket_limit=_bucket_limit(settings))
 
 
-def _resume_run(settings: Settings, state: CrawlState, run_dir: Path | None) -> tuple[Archive, Frontier]:
+def _resume_run(
+    settings: Settings, state: CrawlState, run_dir: Path | None
+) -> tuple[Archive, Frontier]:
     """恢复归档与待抓队列。"""
     directory = run_dir or Path(state.run_dir)
     archive = Archive.open(directory, settings.storage.manifest_name)
@@ -152,6 +154,17 @@ def _resume_run(settings: Settings, state: CrawlState, run_dir: Path | None) -> 
     return archive, frontier
 
 
+def _seeds_path(settings: Settings, seeds_path: str | None) -> Path:
+    """确定种子文件路径。
+
+    命令行给出的相对路径与配置里的路径同规则：以配置文件所在目录为基准，
+    而不是当前工作目录。
+    """
+    if seeds_path:
+        return resolve_path(seeds_path, settings.config_file.parent)
+    return Path(settings.paths.seeds_file)
+
+
 def run_crawl(
     settings: Settings,
     *,
@@ -159,7 +172,7 @@ def run_crawl(
     seeds_path: str | None = None,
     run_dir: str | None = None,
 ) -> int:
-    state_path = _state_path(settings)
+    state_path = settings.paths.state_path
 
     if resume:
         state = load_state(state_path)
@@ -173,7 +186,7 @@ def run_crawl(
     else:
         archive, frontier = _start_run(settings)
         crawled_count = 0
-        seed_file = Path(seeds_path) if seeds_path else Path(settings.paths.seeds_file)
+        seed_file = _seeds_path(settings, seeds_path)
         try:
             seeds = read_seeds(seed_file)
         except SeedFileError as error:
@@ -203,7 +216,10 @@ def run_crawl(
     )
 
     with stop:
-        added = crawler.run(should_stop=stop.requested)
+        try:
+            added = crawler.run(should_stop=stop.requested)
+        finally:
+            crawler.session.close()  # 会话由本函数创建，也由本函数关闭
 
     save_state(
         state_path,
@@ -266,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_config:
         # 这里打印的必须是"合并 --set 之后"的生效配置，否则 --print-config
         # 就失去了排障价值
-        seed_file = Path(args.seeds) if args.seeds else Path(settings.paths.seeds_file)
+        seed_file = _seeds_path(settings, args.seeds)
         try:
             seeds = read_seeds(seed_file)
         except SeedFileError as error:

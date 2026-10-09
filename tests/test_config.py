@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from config import ConfigError, Override, Settings, config_file_from_args, find_config_file
+from config import (
+    ConfigError,
+    Override,
+    Settings,
+    config_file_from_args,
+    find_config_file,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,7 +59,10 @@ def config_file(tmp_path: Path) -> Path:
 def test_loads_all_sections(config_file: Path) -> None:
     settings = Settings.from_file(config_file)
 
-    assert settings.paths.data_dir == "data"
+    # 相对路径一律解析为绝对路径，基准是配置文件所在目录
+    assert settings.paths.data_dir == str((config_file.parent / "data").resolve())
+    assert Path(settings.paths.seeds_file).is_absolute()
+    assert Path(settings.paths.stopwords).is_absolute()
     assert settings.storage.archive_format == "zip"
     assert settings.crawl.user_agent == "test-agent/0.1"
     assert settings.crawl.default_delay_seconds == 1.5
@@ -62,6 +71,41 @@ def test_loads_all_sections(config_file: Path) -> None:
     assert settings.search.k == 20
     assert settings.web.port == 8000
     assert settings.config_file == config_file
+
+
+def test_absolute_path_in_config_is_kept() -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as raw:
+        root = Path(raw)
+        target = root / "elsewhere"
+        path = root / "config.toml"
+        path.write_text(
+            VALID_CONFIG.replace('data_dir = "data"', f'data_dir = "{target.as_posix()}"'),
+            encoding="utf-8",
+        )
+
+        settings = Settings.from_file(path)
+
+    assert settings.paths.data_dir == str(target.resolve())
+
+
+def test_derived_paths_hang_off_data_dir(config_file: Path) -> None:
+    paths = Settings.from_file(config_file).paths
+
+    assert paths.crawl_dir == Path(paths.data_dir) / "crawl"
+    assert paths.state_path == Path(paths.data_dir) / "state" / "crawl_state.json"
+
+
+def test_relative_to_config_not_to_cwd(config_file: Path, tmp_path: Path, monkeypatch) -> None:
+    """换工作目录执行同一份配置，仍然指向同一份数据。"""
+    other = tmp_path / "far" / "away"
+    other.mkdir(parents=True)
+    monkeypatch.chdir(other)
+
+    settings = Settings.from_file(config_file)
+
+    assert settings.paths.data_dir == str((config_file.parent / "data").resolve())
 
 
 def test_missing_key_is_reported(config_file: Path) -> None:

@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import time
+import zipfile
 from pathlib import Path
 
 from crawler.store import Archive, RunRecord, document_id
 
 HTML = "<html><head><title>测试页</title></head><body>正文</body></html>"
+
+
+def read_member(archive: Archive, member: str) -> str:
+    """读取 zip 成员。
+
+    归档由此处直接读 zip，而不是在 Archive 上再开一个只被测试使用的读取方法——
+    真正会读归档的是 P3 的 indexing/reader.py，到时候由它承担这个职责。
+    """
+    with zipfile.ZipFile(archive.pages_path) as zf:
+        return zf.read(member).decode("utf-8")
 
 
 def make_record(url: str, member: str) -> RunRecord:
@@ -44,15 +55,15 @@ def test_document_id_is_64_bit_hex() -> None:
     int(value, 16)  # 不是十六进制会抛 ValueError
 
 
-def test_write_then_read_page(tmp_path: Path) -> None:
+def test_write_puts_page_in_zip(tmp_path: Path) -> None:
     archive = Archive.create(tmp_path, "manifest.jsonl")
     doc_id = document_id("https://a.example/")
 
     member = archive.write_page(doc_id, HTML)
+    archive.close()  # 写入期间 zip 句柄保持打开，读取前需先关闭
 
     assert member == f"{doc_id}.html"
-    assert archive.read_page(member) == HTML
-    archive.close()
+    assert read_member(archive, member) == HTML
 
 
 def test_manifest_round_trip(tmp_path: Path) -> None:
@@ -67,7 +78,7 @@ def test_manifest_round_trip(tmp_path: Path) -> None:
 
     assert len(records) == 1
     assert records[0].archive_member == member
-    assert reopened.read_page(records[0].archive_member) == HTML
+    assert read_member(reopened, records[0].archive_member) == HTML
 
 
 def test_corrupt_manifest_line_is_skipped(tmp_path: Path) -> None:

@@ -63,6 +63,21 @@ def test_missing_seed_file_exits_with_error(cli, tmp_path: Path) -> None:
     assert code == 2
 
 
+def test_seeds_relative_path_is_resolved_against_config_dir(cli) -> None:
+    """--seeds 相对路径与配置里的路径同规则：基准是配置文件所在目录。
+
+    这里用仓库自带的真配置，只把 --seeds 换成相对路径；若按 CWD 解析会指向
+    不存在的位置，从而报错退出。
+    """
+    code, output = cli(
+        "--print-config", "--config", str(PROJECT_ROOT / "config.toml"),
+        "--seeds", "resources/seeds.example.txt",
+    )
+
+    assert code == 0
+    assert "count = 15" in output
+
+
 def test_bare_invocation_prints_help(cli) -> None:
     code, output = cli()
 

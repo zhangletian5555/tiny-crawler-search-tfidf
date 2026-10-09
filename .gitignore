@@ -11,6 +11,8 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 
 # 参考代码（历史作业素材，仅本地保留）
 ref/

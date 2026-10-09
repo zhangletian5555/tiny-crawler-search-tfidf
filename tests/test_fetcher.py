@@ -115,7 +115,7 @@ def test_decodes_utf8_page_without_charset_in_header() -> None:
     body = (
         '<html><head><meta charset="UTF-8"><title>人工智能学院</title></head>'
         "<body>招生简章</body></html>"
-    ).encode("utf-8")
+    ).encode()
     session = FakeSession([FakeResponse(content=body, content_type="text/html")])
 
     result = fetch_page("https://example.com/", CONFIG, session)  # type: ignore[arg-type]
@@ -138,7 +138,7 @@ def test_header_charset_wins_over_meta() -> None:
 
 
 def test_unknown_charset_falls_back_to_utf8() -> None:
-    body = "<html><head><title>标题</title></head></html>".encode("utf-8")
+    body = "<html><head><title>标题</title></head></html>".encode()
     session = FakeSession(
         [FakeResponse(content=body, content_type="text/html; charset=not-a-codec")]
     )

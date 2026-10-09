@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+
+from .link_extract import url_host
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,7 @@ class Frontier:
         """
         if url in self._seen:
             return False
-        host = _host(url)
+        host = url_host(url)
         if host is None:
             return False
 
@@ -102,7 +103,3 @@ class Frontier:
         for host in self._order:
             pages.extend(self._buckets.get(host, ()))
         return pages
-
-
-def _host(url: str) -> str | None:
-    return urlsplit(url).netloc.lower() or None

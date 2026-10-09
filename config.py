@@ -46,11 +46,24 @@ def find_config_file(explicit: str | Path | None = None, start: Path | None = No
 
 @dataclass(frozen=True)
 class Paths:
-    """路径配置。除 data_dir 为目录外，其余均为文件。"""
+    """路径配置。
+
+    所有路径在加载时解析为绝对路径，基准是配置文件所在目录——这样续爬、换
+    工作目录执行同一份配置都指向同一份数据（此前 data_dir 是相对 CWD 的字符串，
+    换目录续爬会找不到归档）。`~` 会展开；用户显式传入的 --seeds 不在此列。
+    """
 
     data_dir: str
     seeds_file: str
     stopwords: str
+
+    @property
+    def crawl_dir(self) -> Path:
+        return Path(self.data_dir) / "crawl"
+
+    @property
+    def state_path(self) -> Path:
+        return Path(self.data_dir) / "state" / "crawl_state.json"
 
 
 @dataclass(frozen=True)
@@ -137,9 +150,15 @@ class Settings:
 
         return cls(
             paths=Paths(
-                data_dir=_text(_value(raw, "paths", "data_dir"), "paths.data_dir"),
-                seeds_file=_text(_value(raw, "paths", "seeds_file"), "paths.seeds_file"),
-                stopwords=_text(_value(raw, "paths", "stopwords"), "paths.stopwords"),
+                data_dir=_resolve(
+                    _value(raw, "paths", "data_dir"), path.parent, "paths.data_dir"
+                ),
+                seeds_file=_resolve(
+                    _value(raw, "paths", "seeds_file"), path.parent, "paths.seeds_file"
+                ),
+                stopwords=_resolve(
+                    _value(raw, "paths", "stopwords"), path.parent, "paths.stopwords"
+                ),
             ),
             storage=StorageConfig(
                 archive_format=_choice(
@@ -296,6 +315,23 @@ def _text(value: Any, key: str) -> str:
     if not isinstance(value, str):
         raise ConfigError(f"{key} 需要字符串，收到 {type(value).__name__}")
     return value
+
+
+def _resolve(value: Any, base: Path, key: str) -> str:
+    """把配置里的路径解析成绝对路径字符串，基准为配置文件所在目录。"""
+    return str(resolve_path(_text(value, key), base))
+
+
+def resolve_path(value: str | Path, base: Path) -> Path:
+    """把用户给出的路径解析为绝对路径。
+
+    相对路径以 base 为基准（配置文件所在目录），而不是当前工作目录——这样
+    换目录执行同一份配置，仍然指向同一份数据。
+    """
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    return candidate.resolve()
 
 
 def _number(value: Any, key: str, minimum: float | None = None) -> float:

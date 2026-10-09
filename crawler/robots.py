@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
+
+from .link_extract import url_origin
 
 # loaded: 成功取得并按规则判定
 # missing: 站点没有 robots.txt（404 等），视为无限制
@@ -51,16 +52,15 @@ class RobotsCache:
         self._rules: dict[str, RobotsRules] = {}
 
     def rules_for(self, url: str) -> RobotsRules:
-        origin = _origin(url)
+        origin = url_origin(url)
         if origin is None:
             return RobotsRules(
                 verdict="unavailable", note="URL 不含主机名，无法定位 robots.txt"
             )
 
-        host_key = urlsplit(origin).netloc
-        if host_key not in self._rules:
-            self._rules[host_key] = self._load(origin)
-        return self._rules[host_key]
+        if origin not in self._rules:
+            self._rules[origin] = self._load(origin)
+        return self._rules[origin]
 
     def crawl_delay_for(self, url: str) -> float | None:
         return self.rules_for(url).crawl_delay
@@ -96,14 +96,6 @@ class RobotsCache:
             parser.parse(text.splitlines())
 
         return RobotsRules(verdict="loaded", parser=parser, crawl_delay=_crawl_delay(parser))
-
-
-def _origin(url: str) -> str | None:
-    """返回 URL 的站点根（scheme + netloc），用于定位 robots.txt。"""
-    split = urlsplit(url)
-    if not split.scheme or not split.netloc:
-        return None
-    return urlunsplit((split.scheme, split.netloc, "", "", ""))
 
 
 def _crawl_delay(parser: RobotFileParser) -> float | None:

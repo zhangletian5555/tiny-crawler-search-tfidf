@@ -51,6 +51,26 @@ def normalize_url(url: str) -> str:
     return urlunsplit((scheme, netloc, path, query, ""))
 
 
+def url_host(url: str) -> str | None:
+    """返回小写 host:port；无法解析时返回 None。
+
+    限速与分桶都按"站点"归组，统一走这里，避免各处自己 urlsplit 出不同粒度。
+    """
+    return urlsplit(url).netloc.lower() or None
+
+
+def url_origin(url: str) -> str | None:
+    """返回 scheme://host:port；无法解析时返回 None。
+
+    robots.txt 是按 origin 生效的（同一 host 的 http 与 https 各有一份），
+    因此 robots 缓存以它为键。
+    """
+    split = urlsplit(url)
+    if split.scheme not in ("http", "https") or not split.netloc:
+        return None
+    return f"{split.scheme}://{split.netloc.lower()}"
+
+
 def extract_links(html: str, base_url: str) -> list[str]:
     """返回 html 中所有归一化后的站外可达链接。
 

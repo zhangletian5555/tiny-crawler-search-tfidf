@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from urllib.parse import urlsplit
 
+from .link_extract import url_host
 from .robots import RobotsCache
 
 
@@ -24,7 +24,7 @@ class HostThrottle:
 
     def wait_seconds(self, url: str, delay: float, now: float | None = None) -> float:
         """返回还需等待的秒数；不需要等待时返回 0。"""
-        host = _host(url)
+        host = url_host(url)
         if host is None or delay <= 0:
             return 0.0
 
@@ -36,7 +36,7 @@ class HostThrottle:
 
     def record(self, url: str, now: float | None = None) -> None:
         """记录一次请求发生的时刻。"""
-        host = _host(url)
+        host = url_host(url)
         if host is not None:
             self._last_request[host] = time.monotonic() if now is None else now
 
@@ -70,7 +70,3 @@ def delay_for(url: str, default_delay: float, robots: RobotsCache | None) -> flo
     if declared is None:
         return default_delay
     return max(default_delay, declared)
-
-
-def _host(url: str) -> str | None:
-    return urlsplit(url).netloc.lower() or None

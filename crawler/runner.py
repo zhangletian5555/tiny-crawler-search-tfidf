@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import requests
 
 from config import CrawlConfig
+from tokenizer.segments import embedded_date, parts
 
 from .fetcher import FetchResult, create_session, fetch_page
 from .frontier import Frontier, PendingPage
@@ -22,7 +23,6 @@ from .link_extract import extract_links
 from .robots import RobotsCache
 from .store import Archive, RunRecord, document_id
 from .throttle import HostThrottle, make_throttle
-from tokenizer.segments import embedded_date, parts
 
 
 class Crawler:
@@ -44,9 +44,8 @@ class Crawler:
         self.config = config
         self.respect_robots = respect_robots
         self.on_page = on_page
-        self.on_note = on_note or (lambda note: None)
+        self.on_note = on_note or (lambda *_: None)
 
-        self._owns_session = session is None
         self.session = session or create_session(config.user_agent)
         self.robots = robots or RobotsCache(
             self.session, config.user_agent, config.request_timeout
@@ -71,9 +70,9 @@ class Crawler:
                     break
                 self._visit(page)
         finally:
+            # 关闭会话是调用方（Crawler 的拥有者）的责任：这里只收尾归档。
+            # Crawler 结束运行后不再发请求，会话是否复用由调用方决定。
             self.archive.close()
-            if self._owns_session:
-                self.session.close()
         return self.crawled_count
 
     # ------------------------------------------------------------------
@@ -124,7 +123,7 @@ class Crawler:
             doc_id=doc_id,
             url=result.url,
             final_url=result.final_url,
-            fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            fetched_at=datetime.now(UTC).isoformat(timespec="seconds"),
             status=result.status,
             content_type=result.content_type,
             title=title,

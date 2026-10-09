@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 
@@ -13,7 +13,7 @@ class StopwordFileError(Exception):
     """停用词文件缺失或不可读。"""
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_stopwords(path: str | Path) -> frozenset[str]:
     """读取停用词表，按绝对路径缓存，重复调用不再读盘。"""
     resolved = Path(path).expanduser().resolve()

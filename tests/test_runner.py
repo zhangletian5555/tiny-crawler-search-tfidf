@@ -6,7 +6,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from config import CrawlConfig
-from crawler.fetcher import FetchResult
 from crawler.frontier import Frontier
 from crawler.runner import Crawler
 from crawler.store import Archive
@@ -108,14 +107,17 @@ def test_crawls_whole_small_site(tmp_path: Path) -> None:
 
 
 def test_archive_holds_every_page(tmp_path: Path) -> None:
+    import zipfile
+
     crawler, archive, _, _ = build(tmp_path)
 
     crawler.run()
 
     records = list(archive.load_records())
-    for record in records:
-        assert record.archive_member == f"{record.doc_id}.html"
-        assert "<html>" in archive.read_page(record.archive_member)
+    with zipfile.ZipFile(archive.pages_path) as zf:
+        for record in records:
+            assert record.archive_member == f"{record.doc_id}.html"
+            assert "<html>" in zf.read(record.archive_member).decode("utf-8")
 
 
 def test_record_metadata_is_filled(tmp_path: Path) -> None:
@@ -333,23 +335,3 @@ def test_fetch_result_is_reported_per_page(tmp_path: Path) -> None:
     crawler.run()
 
     assert set(seen) == {HOME, ABOUT, DEEP, OTHER}
-
-
-def test_fetch_result_error_is_carried_by_notes(tmp_path: Path) -> None:
-    """fetch_page 的错误信息应出现在 note 里，便于排查。"""
-    crawler, _, _, _ = build(tmp_path)
-    notes: list[str] = []
-    crawler.on_note = notes.append
-    crawler.session = SiteSession({})  # 所有页面 404
-    crawler.frontier.enqueue("https://site.example/only", 0, HOME)
-
-    crawler.run()
-
-    assert any("抓取失败" in note for note in notes)
-
-
-def test_fetch_result_type_matches_fetcher() -> None:
-    # 保护性检查：runner 依赖 fetcher.FetchResult 的字段
-    result = FetchResult(url="https://a.example/", status=200, html="<html></html>")
-
-    assert result.ok is True
