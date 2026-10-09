@@ -102,6 +102,17 @@ def test_empty_archive_yields_nothing(tmp_path: Path) -> None:
     assert list(read_documents(archive.run_dir)) == []
 
 
+def test_truncated_zip_yields_nothing_instead_of_raising(tmp_path: Path) -> None:
+    """被强杀的运行会让 zip 缺少中央目录，整体不可读——应返回空而不是抛异常。"""
+    archive = make_archive(tmp_path)
+    archive.close()
+    # 截掉尾部（中央目录所在处），模拟进程被强杀
+    raw = archive.pages_path.read_bytes()
+    archive.pages_path.write_bytes(raw[: len(raw) // 2])
+
+    assert list(read_documents(archive.run_dir)) == []
+
+
 def test_missing_run_dir_is_reported(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         list(read_documents(tmp_path / "absent"))

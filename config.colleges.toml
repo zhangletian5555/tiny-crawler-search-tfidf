@@ -2,8 +2,10 @@
 #
 # 与 config.multisite.toml 的区别：
 #   1. crawl.allowed_hosts 限定抓取范围——站外链接不入队，预算全部花在目标站点上；
-#   2. 两个预算都放大到"够用"的量级（单站 5000 页 / 总计 25000 页），
-#      因为目标是"尽量收全"而不是抽样。
+#   2. 两个预算按"一次运行能正常收尾"的量级设置（单站 2500 页 / 总计 12000 页）。
+#      注意：抓取务必让它跑到正常结束——被强杀时 zip 的中央目录没写完，整个归档会
+#      不可读（reader 会返回空而不是报错，但那一轮数据只能丢弃）。间隔 0.3s 下，
+#      12000 页约需 1 小时。
 #
 # 化院说明：原站 chem.ruc.edu.cn 已全线 404（站点下线或迁移），
 # 这里用其附属站 chemgroups.ruc.edu.cn 代替。
@@ -31,8 +33,8 @@ allowed_hosts = [
     "chemgroups.ruc.edu.cn",
 ]
 
-max_pages = 25000
-max_pages_per_host = 5000
+max_pages = 12000
+max_pages_per_host = 2500
 request_timeout = 15.0
 max_retries = 2
 retry_backoff_seconds = 3.0

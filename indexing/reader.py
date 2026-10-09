@@ -34,15 +34,25 @@ def read_documents(
     清单是文档集合的权威来源：zip 里可能存在没有清单记录的成员（例如中途
     中断），它们不会被索引——索引只承认清单。
 
-    一次都没抓到页面时 pages.zip 不存在（zip 句柄是在写入第一页时才建立的），
-    这属于正常的空归档，返回空序列而不是报错。
+    两种"没有可索引内容"的情况都返回空序列而不是抛异常：
+
+    - 一次都没抓到页面时 pages.zip 不存在（zip 句柄在写入第一页时才建立）；
+    - 运行被强杀时 zip 的中央目录没写完，文件整体不可读（zip 的记录在关闭时才落盘）。
+      这类归档只能整体丢弃，逐条抢救不现实——这也是"长抓取要留足时间让它正常收尾"
+      的原因。
+
+    每次迭代开一次 zip：manifest 有几千行时没必要为整轮读取长期占用句柄。
     """
     archive = Archive.open(crawl_dir, manifest_name)
     if not archive.pages_path.is_file():
         return
 
-    # 每次迭代开一次 zip：manifest 有几千行时，没必要为整轮读取长期占用句柄
-    with zipfile.ZipFile(archive.pages_path) as pages:
+    try:
+        pages = zipfile.ZipFile(archive.pages_path)
+    except zipfile.BadZipFile:
+        return
+
+    with pages:
         members = set(pages.namelist())
         for record in archive.load_records():
             if record.archive_member not in members:
