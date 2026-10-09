@@ -62,6 +62,10 @@ class Paths:
         return Path(self.data_dir) / "crawl"
 
     @property
+    def index_dir(self) -> Path:
+        return Path(self.data_dir) / "index"
+
+    @property
     def state_path(self) -> Path:
         return Path(self.data_dir) / "state" / "crawl_state.json"
 
