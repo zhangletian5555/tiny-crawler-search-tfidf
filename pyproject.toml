@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiny-crawler-search-tfidf"
+version = "0.1.0"
+description = "小型礼貌爬虫与 TF-IDF 检索学习项目"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "jieba>=0.42",
+    "url-normalize>=1.4",
+    "flask>=3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+# 顶层模块与包；未列出的目录（data/、docs/、tests/ 等）不是发布内容
+py-modules = ["config"]
+packages = ["tokenizer", "crawler", "indexing", "search", "web"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

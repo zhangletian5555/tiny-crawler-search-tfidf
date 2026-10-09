@@ -1,0 +1,19 @@
+# 种子列表：每行一个 URL，'#' 起为行内注释，空行忽略。
+# 使用时可通过 config.toml 的 paths.seeds_file 指向自己的种子文件。
+# 下面这 15 个是参考代码里用过的站点，用作可复现的示例。
+
+http://pd.ruc.edu.cn/
+http://sph.ruc.edu.cn/
+https://clr.ruc.edu.cn/
+http://dis.ruc.edu.cn/
+http://dsdj.ruc.edu.cn/
+http://scsce.ruc.edu.cn/
+http://isbd.ruc.edu.cn/
+http://sis.ruc.edu.cn/
+http://info.ruc.edu.cn/
+http://www.phys.ruc.edu.cn/
+http://psy.ruc.edu.cn/
+http://guoxue.ruc.edu.cn/
+https://envi.ruc.edu.cn/
+http://ai.ruc.edu.cn/
+https://gsai.ruc.edu.cn/

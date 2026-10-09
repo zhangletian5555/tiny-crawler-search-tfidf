@@ -1,0 +1,10 @@
+# 运行依赖
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.0
+jieba>=0.42
+url-normalize>=1.4
+flask>=3.0
+
+# 开发依赖（测试）
+pytest>=8.0

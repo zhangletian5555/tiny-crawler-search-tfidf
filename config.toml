@@ -1,0 +1,42 @@
+# tiny-crawler-search-tfidf 全局配置（唯一配置源）
+#
+# 使用方式：
+#   python -m crawler  --config config.toml [--set crawl.max_pages=50]
+#   python -m indexing --config config.toml [--set index.title_weight=2.0]
+#   python -m crawler  --config config.toml --print-config   # 只打印生效配置
+#
+# 约定：
+#   1. 本文件只由顶层 config.py 读取，其他模块一律不读配置文件；
+#   2. 路径是相对项目根目录的相对路径（也接受绝对路径或 ~ 开头）；
+#   3. 一次性实验参数走命令行 --set，不改本文件；
+#   4. 不要在这里放密码等敏感信息（本文件会提交进版本库）。
+
+[paths]
+data_dir = "data"                          # 所有运行时数据集中于此，不进版本库
+seeds_file = "resources/seeds.example.txt" # 爬虫种子列表（每行一个 URL）
+stopwords = "tokenizer/stopwords_zh.txt"   # 停用词表
+
+[storage]
+archive_format = "zip"        # 抓取产物格式，当前仅支持 zip
+manifest_name = "manifest.jsonl"
+
+[crawl]
+user_agent = "tiny-crawler-search-tfidf/0.1 (+https://example.invalid; learning project)"
+default_delay_seconds = 1.0   # 同一 host 两次请求之间的最小间隔
+respect_robots = true         # 遵守 robots.txt（含 Crawl-delay）
+max_pages = 200               # 单次运行最多抓取页数，0 表示不限
+max_pages_per_host = 50       # 单 host 上限，0 表示不限
+request_timeout = 10.0        # 单次请求超时（秒）
+max_retries = 2               # 失败重试次数
+retry_backoff_seconds = 2.0   # 重试退避基数（第 n 次重试等待 n * 该值）
+
+[index]
+title_weight = 2.0            # w_tf = title_tf * title_weight + body_tf
+
+[search]
+k = 20                        # 默认返回结果条数
+
+[web]
+host = "127.0.0.1"
+port = 8000
+debug = false
