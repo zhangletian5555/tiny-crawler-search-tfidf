@@ -64,11 +64,15 @@ config.toml ──► config.py ──► Settings（frozen dataclass）
 **`manifest.jsonl`**：每行一条记录，**是文档主键的唯一来源**。
 
 ```json
-{"doc_id": "3f9a1c7e20b45d81", "url": "https://ai.ruc.edu.cn/", "fetched_at": "2026-01-15T10:30:02+08:00", "status": 200, "content_type": "text/html; charset=utf-8", "title": "中国人民大学高瓴人工智能学院", "embedded_date": "2026-01-15", "body_bytes": 48213, "archive_member": "3f9a1c7e20b45d81.html", "seed_url": "https://ai.ruc.edu.cn/", "depth": 0, "version": 1}
+{"doc_id": "3f9a1c7e20b45d81", "url": "https://ai.ruc.edu.cn/", "final_url": "https://ai.ruc.edu.cn/", "fetched_at": "2026-01-15T10:30:02+08:00", "status": 200, "content_type": "text/html; charset=utf-8", "title": "中国人民大学高瓴人工智能学院", "embedded_date": "2026-01-15", "body_bytes": 48213, "archive_member": "3f9a1c7e20b45d81.html", "seed_url": "https://ai.ruc.edu.cn/", "depth": 0, "version": 1}
 ```
 
-`doc_id = sha1(normalized_url)[:16]`（64 bit）。同一 URL 重复抓到时 `version` 递增，
-后写的覆盖先写的。URL 必须先归一化再哈希，否则同一页面的不同写法会产生不同主键。
+- `doc_id = sha1(final_url)[:16]`（64 bit）。用**重定向后的最终 URL**作主键，因此
+  `http://x` 与 `https://x`、别名路径等指向同一内容时只归档一篇。
+- `url` 记录**请求来源**，`final_url` 记录**内容实际所在**，两者不同即说明发生过重定向。
+- `final_url` 是后加字段：旧清单没有它，加载时回退为 `url`，因此旧归档仍可读。
+- 同一次运行内若主键重复（不同入口指向同一内容），后到的会被跳过并记一条说明，
+  不重复写入 zip——`zipfile.writestr` 不会覆盖同名成员，重复写入会留下读不到的滞留数据。
 
 ### 3.2 索引产物 `data/index/<index_id>/`
 
@@ -108,7 +112,7 @@ score(q, d) = Σ_{t ∈ q} w(t, d) / doc_norm * w_tf(t, q)
 | Crawl-delay | robots.txt 声明了 `Crawl-delay` 时，取它与 `default_delay_seconds` 中的较大值（按通配 `*` 查询，这是 `RobotFileParser` 能提供的方式） |
 | 限速粒度 | **按 host** 计时（不是按种子，也不是全局），同一 host 两次请求间隔不小于上述延迟；抓取 robots.txt 自身不计入该 host 的请求时刻 |
 | 抓取顺序 | 按 host 分桶的 FIFO：把一个 host 的待抓做完再换下一个。对站方友好，代价是慢站点会拖住后面的站点 |
-| 待抓上限 | `max_pages_per_host` 同时用作单 host 待抓队列上限——否则一次运行会把上万个 URL 写进检查点 |
+| 待抓水位 | 单 host 待抓队列有水位上限（取 `max_pages_per_host * 10` 与 1000 的较大值），避免检查点被上万个 URL 撑大。**水位不是抓取预算**：超过水位的链接会被拒且不再入队，因此会被计入"未入队链接数"并在运行结束时提示——不能让它静默发生 |
 | 重试 | 失败重试 `max_retries` 次，第 n 次等待 `n * retry_backoff_seconds`，不立即重入队；4xx 不重试 |
 | 只抓网页 | 只接受 `text/html` 与 `application/xhtml+xml`，其余记录原因后跳过 |
 | 停止 | 队列空、达到 `max_pages`、或收到 Ctrl+C（只置位不抛异常，在安全点收尾并保存断点） |
