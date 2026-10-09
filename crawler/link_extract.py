@@ -53,11 +53,29 @@ def normalize_url(url: str) -> str:
 
 
 def url_host(url: str) -> str | None:
-    """返回小写 host:port；无法解析时返回 None。
+    """返回小写 host（含端口）；无法解析时返回 None。
 
-    限速与分桶都按"站点"归组，统一走这里，避免各处自己 urlsplit 出不同粒度。
+    限速按"服务器"归组，端口不同可能是不同服务，因此保留端口。
     """
     return urlsplit(url).netloc.lower() or None
+
+
+def canonical_host(url: str) -> str | None:
+    """返回规范化主机名（小写、去掉端口与 www. 前缀）。
+
+    **抓取预算与待抓分桶必须用它**，不能用 url_host：同一站点的
+    `http://www.example.com`、`https://example.com`、`example.com:80`
+    在 url_host 下是三个不同的键，会把单站预算重复给同一个站点。
+    实测后果：ai.ruc.edu.cn 的 https 与 http 两个键各花掉 250 页预算。
+    """
+    host = url_host(url)
+    if host is None:
+        return None
+
+    hostname = host.split(":", 1)[0]
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    return hostname or None
 
 
 def url_origin(url: str) -> str | None:

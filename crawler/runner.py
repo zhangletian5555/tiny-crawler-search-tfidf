@@ -20,7 +20,7 @@ from tokenizer.segments import embedded_date, parts
 
 from .fetcher import FetchResult, create_session, fetch_page
 from .frontier import Frontier, PendingPage
-from .link_extract import extract_links, host_is_allowed
+from .link_extract import canonical_host, extract_links, host_is_allowed
 from .robots import RobotsCache
 from .store import Archive, RunRecord, document_id
 from .throttle import HostThrottle, make_throttle
@@ -91,7 +91,8 @@ class Crawler:
         return limit <= 0 or self.crawled_count < limit
 
     def _visit(self, page: PendingPage) -> None:
-        if self._host_budget_exhausted(page.host):
+        host = canonical_host(page.url)
+        if host is None or self._host_budget_exhausted(host):
             return
 
         if self.respect_robots:
@@ -106,7 +107,7 @@ class Crawler:
             return
 
         self.crawled_count += 1
-        self._crawled_per_host[page.host] += 1
+        self._crawled_per_host[host] += 1
         if self.on_page is not None:
             self.on_page(record)
 
@@ -119,9 +120,10 @@ class Crawler:
     def _host_budget_exhausted(self, host: str) -> bool:
         """该 host 是否已达抓取预算；达到则把它的待抓页面整批丢掉。
 
-        丢掉的 URL 不标记为已见，因此别的页面再链到它们时会被重新入队、再被
-        本次判断丢掉——重复入队是有界的（bounded by 该 host 的出链数），换来的
-        好处是不必为"已放弃的 host"维护一份额外的已见集合。
+        host 用的是 canonical_host（统一 http/https、去 www. 与端口），因此同一
+        站点的不同写法共用一份预算。丢掉的 URL 不标记为已见，别的页面再链到它们
+        时会被重新入队、再被本次判断丢掉——重复入队有界（受该 host 出链数限制），
+        换来的是不必为"已放弃的 host"额外维护一份已见集合。
         """
         budget = self.config.max_pages_per_host
         if budget <= 0 or self._crawled_per_host.get(host, 0) < budget:

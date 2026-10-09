@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 
-from .link_extract import url_host
+from .link_extract import canonical_host
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,7 @@ class Frontier:
         """
         if url in self._seen:
             return False
-        host = url_host(url)
+        host = canonical_host(url)
         if host is None:
             return False
 
