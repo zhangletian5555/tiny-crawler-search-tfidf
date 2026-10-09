@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 
 from tokenizer.analyze import terms
 from tokenizer.noise import is_noise
-from tokenizer.segments import body_text, embedded_date, title_text
+from tokenizer.segments import body_text, embedded_date, parts, title_text
 
 SAMPLE_PAGE = Path(__file__).resolve().parent / "fixtures" / "sample_page.html"
 
@@ -57,6 +57,32 @@ def test_html_slices() -> None:
     body = body_text(soup)
     assert "师资队伍" in body
     assert "console.log" not in body  # script 内容已剔除
+    assert "margin: 0" not in body  # style 内容已剔除
+
+
+def test_body_text_does_not_modify_the_soup() -> None:
+    """body_text 不应从文档树上摘除节点，调用方可能复用同一个 soup。"""
+    soup = BeautifulSoup(SAMPLE_PAGE.read_text(encoding="utf-8"), "lxml")
+
+    body_text(soup)
+
+    assert soup.find("script") is not None
+    assert soup.find("style") is not None
+    # 复用同一个 soup 再取一次，结果必须一致
+    assert body_text(soup) == body_text(soup)
+
+
+def test_body_text_without_body_tag() -> None:
+    soup = BeautifulSoup("<html><head><title>无正文</title></head></html>", "lxml")
+
+    assert body_text(soup) == ""
+
+
+def test_parts_returns_title_and_body_from_one_parse() -> None:
+    title, body = parts(SAMPLE_PAGE.read_text(encoding="utf-8"))
+
+    assert title == "人工智能学院 2026 年招生简章"
+    assert "自然语言处理" in body
 
 
 def test_embedded_date_prefers_most_specific_form() -> None:

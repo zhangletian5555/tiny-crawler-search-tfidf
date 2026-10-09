@@ -16,6 +16,9 @@ _DATE_PATTERNS = (
     re.compile(r"(?P<month>\d{1,2})\s*[-/.月]\s*(?P<day>\d{1,2})\s*[日号]"),
 )
 
+# 文本属于代码或样式，而不是页面内容
+_NON_CONTENT_TAGS = frozenset({"script", "style", "noscript"})
+
 
 def title_text(soup: BeautifulSoup) -> str:
     """<title> 的文本，没有则返回空串。"""
@@ -35,15 +38,24 @@ def parts(html: str) -> tuple[str, str]:
 def body_text(soup: BeautifulSoup) -> str:
     """<body> 的可见文本。
 
-    先剔除 script/style/noscript：它们的文本是代码而不是页面内容。
+    剔除 script/style/noscript：它们的文本是代码而不是页面内容。用生成器跳过
+    这些标签，而不是从文档树上摘除它们——后者会修改传入的 soup，调用方若复用
+    同一个 soup 就会拿到被改过的树。
+
     注意只取 string 会漏掉部分导航栏，网页模板噪声交由停用词表处理。
     """
     body = soup.find("body")
     if body is None:
         return ""
-    for tag in body.find_all(("script", "style", "noscript")):
-        tag.decompose()
-    return body.get_text(separator=" ", strip=True)
+
+    def visible_strings():
+        for text in body.strings:
+            parent = text.parent
+            if parent is not None and parent.name in _NON_CONTENT_TAGS:
+                continue
+            yield text
+
+    return " ".join(text.strip() for text in visible_strings() if text.strip())
 
 
 def embedded_date(text: str) -> str | None:
