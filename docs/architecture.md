@@ -95,14 +95,18 @@ config.toml ──► config.py ──► Settings（frozen dataclass）
 
 ```
 w_tf(t, d) = title_tf(t, d) * title_weight + body_tf(t, d)     title_weight 来自配置
-w(t, d)    = (1 + log w_tf(t, d)) * idf(t)                     idf(t) = log(N / df(t))
-doc_norm   = sqrt(Σ_t w(t, d)^2)
-score(q, d) = Σ_{t ∈ q} w(t, d) / doc_norm * w_tf(t, q)
+w(t, d)    = w_tf(t, d) * idf(t)                               idf(t) = ln(N / df(t))
+doc_norm   = sqrt(Σ_t w(t, d)^2)                               构建索引时算好并存盘
+q(t, q)    = (1 + ln query_tf(t)) * idf(t)                     查询侧对重复词做对数抑制
+score(q, d) = Σ_{t ∈ q} w(t, d) / doc_norm * q(t, q)
 ```
 
-只用这一套公式。**刻意不做**的事：覆盖率惩罚、子词扩展、日期加权、文档长度预计算缓存。
-这些在参考代码里都存在，但都是为了拟合特定题集而加的，会削弱泛用性；等主线跑通、
-有了评测脚本之后，任何一项都可以作为独立改动加回来并对比效果。BM25 暂不实现。
+只用这一套公式。**刻意不做**的事：覆盖率惩罚、子词扩展、日期加权。这些在参考代码里
+都存在，但都是为了拟合特定题集而加的，会削弱泛用性；等主线跑通、有了评测脚本之后，
+任何一项都可以作为独立改动加回来并对比效果。BM25 暂不实现。
+
+查询时只在 `terms.jsonl` 上扫到查询涉及的词就停，不把整张倒排表读进内存；分数相同时
+按 `doc_id` 定序，保证同一索引上的结果可复现。
 
 ## 5. 礼貌抓取
 
@@ -152,7 +156,7 @@ config.toml ┘
 | P1 | `crawler/link_extract.py`、`crawler/fetcher.py`、`python -m crawler fetch` | 测试通过 + 真实抓取可用 | 已完成 |
 | P2 | `crawler/robots.py`、`throttle.py`、`frontier.py`、`store.py`、`state.py`、`runner.py` | 产出 `pages.zip` + `manifest.jsonl`，可续爬，按 host 限速 | 已完成 |
 | P3 | `indexing/`（reader → builder → writer） | 归档往返一致，索引四个文件齐全 | 已完成 |
-| P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 | 待做 |
+| P4 | `search/`（tfidf、engine） | 固定查询能出结果，`title_weight` 改动可见效果 | 已完成 |
 | P5 | `web/`（模板 + JSON 接口） | 浏览器可检索 | 待做 |
 
 ### 索引产物的规模参考

@@ -239,3 +239,33 @@ CWD 时才正常，换个目录执行 `--resume` 就找不到归档。
 
 **理由**：`Archive` 的惰性建包是合理设计（一次空运行不该留下空 zip），因此"文件不存在"
 必须被解释为"没有页面"，而不是"环境坏了"。这个 bug 是测试写出来才暴露的。
+
+## D18 查询侧权重与文档侧不必逐项对称
+
+**决策**：文档侧的词权重用线性词频 `w_tf * idf`，**不做**对数平滑；查询侧对重复词做
+对数抑制 `(1 + ln query_tf) * idf`。
+
+**理由**：两侧的"词频"含义不同，因此不必强行用同一个函数：
+
+- 文档侧的 `title_tf * title_weight + body_tf` 已经是人工加权的量，再套一层对数会把
+  `title_weight` 的效果压扁——这一点在测试里很直观：`title_weight` 从 0 扫到 50，
+  排序的临界点落在 0.2 与 0.3 之间（`test_title_weight_reverses_the_ranking`）；
+- 查询侧重复输入同一个词只是强调，用对数抑制比线性放大更符合直觉——重复一次不等于
+  分数翻倍（`test_repeated_query_term_is_dampened_not_linear`）。
+
+**代价**：两侧公式不同，读代码时需要同时看 `indexing/builder.py` 的范数计算与
+`search/query.py`。为此把两侧的公式都写进了架构文档 §4，并在测试里以手算值固定
+（`test_query_weight_uses_log_smoothing`、`test_idf_matches_formula`）。
+
+**考虑过的替代**：文档侧也加对数平滑（教科书常见写法）。放弃的原因是对数会把
+`title_weight` 与 `body_tf` 的差异压缩到不易察觉，而"标题命中应当更重要"正是本项目
+想保留的可调行为。
+
+## D19 检索不重新计算 idf，只用索引里的值
+
+**决策**：idf 由 `indexing/builder.py` 在构建时算好并写入 `stats.json`；检索时直接读取。
+`IndexStats.idf` 只是把 `TermStats` 里的值取出来，不重算公式。
+
+**理由**：idf 的定义必须只有一处。参考代码里 `_extract_date`、`str_check`、覆盖率的
+日期权重都在索引与查询两侧各写了一遍，任何一处改动都会让两侧口径悄悄分叉——而
+"索引里算的和查询时算的不一致"是检索系统里最难察觉的一类错误。
