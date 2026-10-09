@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import codecs
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -111,14 +113,56 @@ def _attempt(url: str, session: requests.Session, timeout: float) -> FetchResult
                 error=f"HTTP {response.status_code}",
             )
 
-        encoding = response.encoding or response.apparent_encoding or "utf-8"
+        raw = response.content
+        encoding = detect_encoding(content_type, raw)
         return FetchResult(
             url=url,
             status=response.status_code,
-            html=response.text,
+            html=raw.decode(encoding, errors="replace"),
             content_type=content_type,
             encoding=encoding,
         )
+
+
+# Content-Type 里的 charset 参数，例如 text/html; charset=utf-8
+_CHARSET_PATTERN = re.compile(r"charset\s*=\s*[\"']?([\w-]+)", re.IGNORECASE)
+# HTML 内部的声明，取开头一段即可，避免整页扫描
+_META_CHARSET_PATTERN = re.compile(
+    rb"""<meta[^>]+charset\s*=\s*["']?\s*([\w-]+)""", re.IGNORECASE
+)
+_META_SNIFF_BYTES = 4096
+
+
+def detect_encoding(content_type: str, body: bytes) -> str:
+    """确定页面编码。
+
+    许多站点只回 `Content-Type: text/html` 而不给 charset，requests 会退回其
+    HTTP 默认值 ISO-8859-1，把 UTF-8 页面解成乱码。这里按下面的顺序判断，并且
+    一律由我们自己解码，不走 response.text：
+
+    1. HTTP 头里的 charset（服务器最权威的声明）
+    2. HTML 内部 <meta charset=...>（页面自述，实际站点最常用）
+    3. UTF-8（中文站点当前的主流选择）
+    """
+    declared = _CHARSET_PATTERN.search(content_type)
+    if declared:
+        return _verified(declared.group(1))
+
+    sniffed = _META_CHARSET_PATTERN.search(body[:_META_SNIFF_BYTES])
+    if sniffed:
+        return _verified(sniffed.group(1).decode("ascii", errors="ignore"))
+
+    return "utf-8"
+
+
+def _verified(encoding: str) -> str:
+    """确认 Python 真的认识这个编码名，否则退回 utf-8。"""
+    candidate = encoding.strip().lower()
+    try:
+        codecs.lookup(candidate)
+    except LookupError:
+        return "utf-8"
+    return candidate
 
 
 def _is_html(content_type: str) -> bool:

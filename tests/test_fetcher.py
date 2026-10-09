@@ -104,6 +104,59 @@ def test_fetches_html_page() -> None:
     assert result.encoding == "utf-8"
 
 
+def test_decodes_utf8_page_without_charset_in_header() -> None:
+    """站点只回 `Content-Type: text/html` 时，必须按页面内部声明解码。
+
+    requests 在缺少 charset 时会退回 ISO-8859-1，直接取 response.text 会把
+    中文页面存成乱码——这里就是那个回归用例。
+    """
+    body = (
+        '<html><head><meta charset="UTF-8"><title>人工智能学院</title></head>'
+        "<body>招生简章</body></html>"
+    ).encode("utf-8")
+    session = FakeSession([FakeResponse(content=body, content_type="text/html")])
+
+    result = fetch_page("https://example.com/", CONFIG, session)  # type: ignore[arg-type]
+
+    assert result.encoding == "utf-8"
+    assert "人工智能学院" in (result.html or "")
+    assert "招生简章" in (result.html or "")
+
+
+def test_header_charset_wins_over_meta() -> None:
+    body = '<html><head><meta charset="gbk"></head><body>正文</body></html>'.encode("gbk")
+    session = FakeSession(
+        [FakeResponse(content=body, content_type="text/html; charset=GBK")]
+    )
+
+    result = fetch_page("https://example.com/", CONFIG, session)  # type: ignore[arg-type]
+
+    assert result.encoding == "gbk"
+    assert "正文" in (result.html or "")
+
+
+def test_unknown_charset_falls_back_to_utf8() -> None:
+    body = "<html><head><title>标题</title></head></html>".encode("utf-8")
+    session = FakeSession(
+        [FakeResponse(content=body, content_type="text/html; charset=not-a-codec")]
+    )
+
+    result = fetch_page("https://example.com/", CONFIG, session)  # type: ignore[arg-type]
+
+    assert result.encoding == "utf-8"
+    assert "标题" in (result.html or "")
+
+
+def test_undecodable_bytes_do_not_crash() -> None:
+    body = b"<html><body>\xff\xfe\x00bad bytes</body></html>"
+    session = FakeSession([FakeResponse(content=body, content_type="text/html")])
+
+    result = fetch_page("https://example.com/", CONFIG, session)  # type: ignore[arg-type]
+
+    assert result.ok is True
+    assert "bad bytes" in (result.html or "")
+
+
 def test_skips_non_html_content() -> None:
     session = FakeSession([FakeResponse(content_type="application/pdf")])
 

@@ -21,8 +21,9 @@ archive_format = "zip"        # 抓取产物格式，当前仅支持 zip
 manifest_name = "manifest.jsonl"
 
 [crawl]
-user_agent = "tiny-crawler-search-tfidf/0.1 (+https://example.invalid; learning project)"
-default_delay_seconds = 1.0   # 同一 host 两次请求之间的最小间隔
+# 抓取前请把下面的联系方式改成你自己的，便于站方在出问题时联系
+user_agent = "tiny-crawler-search-tfidf/0.2 (+https://github.com/your-name/tiny-crawler-search-tfidf; learning project)"
+default_delay_seconds = 1.0   # 同一 host 两次请求之间的最小间隔（robots 声明更大时取更大值）
 respect_robots = true         # 遵守 robots.txt（含 Crawl-delay）
 max_pages = 200               # 单次运行最多抓取页数，0 表示不限
 max_pages_per_host = 50       # 单 host 上限，0 表示不限

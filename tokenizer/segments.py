@@ -23,6 +23,15 @@ def title_text(soup: BeautifulSoup) -> str:
     return tag.get_text(strip=True) if tag else ""
 
 
+def parts(html: str) -> tuple[str, str]:
+    """解析一次 HTML，同时取出标题与正文。
+
+    调用方（爬虫记录元数据、建索引）都需要这两者，合并解析避免重复开销。
+    """
+    soup = BeautifulSoup(html, "lxml")
+    return title_text(soup), body_text(soup)
+
+
 def body_text(soup: BeautifulSoup) -> str:
     """<body> 的可见文本。
 
