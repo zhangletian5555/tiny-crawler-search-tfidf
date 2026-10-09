@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from crawler.store import Archive, RunRecord, document_id
 from indexing.builder import build_index
-from indexing.writer import load_meta, write_index
+from indexing.writer import INDEX_FORMAT_VERSION, load_meta, write_index
 
 STOPWORDS = frozenset({"的", "了"})
 
@@ -113,6 +114,54 @@ def test_stopwords_are_not_indexed(tmp_path: Path) -> None:
     assert term_of(result, "检索") is not None
 
 
+def test_duplicate_doc_ids_are_indexed_once(tmp_path: Path) -> None:
+    """清单里同一主键出现多次时只索引第一条。
+
+    真实场景：续爬写入新运行目录，而新运行并不知道旧运行写过哪些主键，于是同一
+    URL 会在归档里留下两条记录。若不在这里去重，检索结果会出现同分同标题的重复
+    条目（实测出现过）。
+    """
+    archive = build_corpus(tmp_path)
+    first_line = archive.manifest_path.read_text(encoding="utf-8").splitlines()[0]
+    with archive.manifest_path.open("a", encoding="utf-8") as handle:
+        handle.write(first_line + "\n")
+
+    result = build_index(archive.run_dir, STOPWORDS, title_weight=2.0)
+
+    assert result.document_count == 3  # 语料本有 3 篇，重复行不应变成 4
+    assert len({document.doc_id for document in result.documents}) == 3
+
+
+def test_identical_content_from_two_urls_is_indexed_once(tmp_path: Path) -> None:
+    """同一内容的不同入口（http/https）只应索引一篇。
+
+    真实语料里 27% 的记录是这种成对重复：站点在 http 与 https 上提供相同页面
+    且不做重定向，两个 URL 得到不同主键，于是同一结果会在检索里出现两次。
+    """
+    archive = build_corpus(tmp_path)
+    url = "https://a.example/"
+    record = next(r for r in archive.load_records() if r.url == url)
+    twin = replace(record, doc_id="twin000000000000", url="http://a.example/", final_url="http://a.example/")
+    archive.append(twin)
+
+    result = build_index(archive.run_dir, STOPWORDS, title_weight=2.0)
+
+    assert result.document_count == 3
+    assert result.duplicates_skipped == 1
+
+
+def test_content_dedupe_can_be_disabled(tmp_path: Path) -> None:
+    archive = build_corpus(tmp_path)
+    record = next(r for r in archive.load_records() if r.url == "https://a.example/")
+    twin = replace(record, doc_id="twin000000000000", url="http://a.example/", final_url="http://a.example/")
+    archive.append(twin)
+
+    result = build_index(archive.run_dir, STOPWORDS, title_weight=2.0, dedupe_content=False)
+
+    assert result.document_count == 4  # 保留全部记录
+    assert result.duplicates_skipped == 0
+
+
 def test_empty_corpus_produces_empty_stats(tmp_path: Path) -> None:
     archive = Archive.create(tmp_path, "manifest.jsonl")
     archive.close()
@@ -141,18 +190,34 @@ def test_title_weight_scales_document_norms(tmp_path: Path) -> None:
     assert high.doc_norms[a] > low.doc_norms[a]
 
 
-def test_write_index_produces_four_artifacts(tmp_path: Path, stats) -> None:
+def test_write_index_produces_expected_artifacts(tmp_path: Path, stats) -> None:
     index_dir = write_index(tmp_path / "index", stats, source_run="20260115-103000", title_weight=2.0)
 
     names = {path.name for path in index_dir.iterdir()}
-    assert names == {"meta.json", "docs.jsonl", "terms.jsonl", "stats.json"}
+    assert names == {"meta.json", "docs.jsonl", "terms.jsonl", "term_offsets.json", "stats.json"}
+
+
+def test_term_offsets_point_at_the_right_rows(tmp_path: Path, stats) -> None:
+    """偏移量必须能定位到自己那一行——写入与读取的字节口径要一致。
+
+    这是真实踩过的坑：Windows 上 text 模式把 \\n 写成 \\r\\n，偏移每行差一字节，
+    seek 后读到的是半行 JSON。
+    """
+    index_dir = write_index(tmp_path / "index", stats, source_run="run-1", title_weight=2.0)
+    offsets = json.loads((index_dir / "term_offsets.json").read_text("utf-8"))
+
+    with (index_dir / "terms.jsonl").open("rb") as handle:
+        for term, offset in offsets.items():
+            handle.seek(offset)
+            row = json.loads(handle.readline().decode("utf-8"))
+            assert row["term"] == term
 
 
 def test_written_artifacts_are_readable_json(tmp_path: Path, stats) -> None:
     index_dir = write_index(tmp_path / "index", stats, source_run="run-1", title_weight=2.0)
 
     meta = load_meta(index_dir)
-    assert meta["format_version"] == 1
+    assert meta["format_version"] == INDEX_FORMAT_VERSION
     assert meta["source_run"] == "run-1"
     assert meta["title_weight"] == 2.0
     assert meta["document_count"] == 3

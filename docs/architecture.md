@@ -81,7 +81,17 @@ config.toml ──► config.py ──► Settings（frozen dataclass）
 | `meta.json` | 格式版本、构建时间、源 crawl run、`title_weight`、N、词典大小 |
 | `docs.jsonl` | 每行 `{doc_id, url, title, title_len, body_len}` |
 | `terms.jsonl` | 每行 `{term, df, postings: [[doc_id, title_tf, body_tf], ...]}`，按 term 排序 |
-| `stats.json` | `{N, avg_title_len, avg_body_len, idf: {term: value}}` |
+| `term_offsets.json` | `{term: 该词在 terms.jsonl 里的字节偏移}` |
+| `stats.json` | `{N, avg_title_len, avg_body_len, idf, doc_norms}` |
+
+`term_offsets.json` 是为查询耗时存在的：`stats.json` 里的 idf 只能判断"词是否存在"，
+要知道它的倒排表就得在 `terms.jsonl` 里找。全表扫描在 8711 篇文档（65 MB）时约
+1.7 秒/次；有偏移表后按词 seek，查询降到 **2–10 ms**。偏移量按写入时的真实字节数累加，
+读写两端都用二进制模式，避免 Windows 上 `\n` → `\r\n` 导致偏移错位。
+
+索引阶段还会**按内容哈希去重**（默认开启）：站点在 http 与 https 上提供相同页面且不做
+重定向时，两个 URL 会有不同主键。实测某次抓取里 27% 的记录属于这种成对重复，去重后
+文档从 8711 降到 7438，同一结果也不再在检索里出现两次。
 
 索引产物**自足**：`search` 只需要这一个目录，不需要 `data/crawl/`。
 这样"换检索参数重建索引"不需要重新抓取。

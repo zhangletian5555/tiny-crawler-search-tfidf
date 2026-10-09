@@ -86,6 +86,8 @@ def run_indexing(settings: Settings, run_dir: Path | None) -> int:
     )
 
     print(f"文档数  ：{stats.document_count}")
+    if stats.duplicates_skipped:
+        print(f"去重跳过：{stats.duplicates_skipped} 篇（同一内容的不同入口，如 http/https）")
     print(f"词条数  ：{len(stats.terms)}")
     print(f"平均长度：标题 {stats.avg_title_len:.1f} / 正文 {stats.avg_body_len:.1f}")
     print(f"索引目录：{index_dir}")

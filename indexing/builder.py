@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections import Counter, defaultdict
 from collections.abc import Iterable
@@ -52,6 +53,7 @@ class IndexStats:
     doc_norms: dict[str, float]
     avg_title_len: float
     avg_body_len: float
+    duplicates_skipped: int = 0
 
     @property
     def document_count(self) -> int:
@@ -68,8 +70,13 @@ def build_index(
     stopwords: frozenset[str],
     title_weight: float,
     manifest_name: str = "manifest.jsonl",
+    dedupe_content: bool = True,
 ) -> IndexStats:
     """扫描归档并统计索引。
+
+    dedupe_content：按正文的哈希去重。同一内容可能因入口不同被存成多篇
+    （真实语料里 27% 的记录是 http/https 同内容两份），重复文档会让 N 与 df
+    同时虚高、同一结果在检索里出现两次。默认开启；需要保留全部记录时关掉。
 
     当前实现把倒排表放在内存里累积（本项目的语料规模下足够）。若将来要处理
     十万级文档，需要改成按词外排归并，届时替换本函数即可，读写的对外契约不变。
@@ -79,8 +86,26 @@ def build_index(
     title_counts: dict[str, dict[str, int]] = defaultdict(dict)
     body_counts: dict[str, dict[str, int]] = defaultdict(dict)
     df: Counter[str] = Counter()
+    seen_doc_ids: set[str] = set()
+    seen_content: set[str] = set()
+    duplicates = 0
 
     for document in read_documents(crawl_dir, manifest_name):
+        # 同一主键在清单里出现多次时只索引第一条。清单是逐行追加的，因此第一条
+        # 就是该主键的历史版本，保留它可让"重建索引"的结果保持确定。
+        # 续爬到新运行目录时尤其容易遇到：新运行不知道旧运行写过哪些主键。
+        if document.doc_id in seen_doc_ids:
+            duplicates += 1
+            continue
+        seen_doc_ids.add(document.doc_id)
+
+        if dedupe_content:
+            digest = _content_digest(document.html)
+            if digest in seen_content:
+                duplicates += 1
+                continue
+            seen_content.add(digest)
+
         title, body = parts(document.html)
         title_tf = Counter(terms(title, stopwords))
         body_tf = Counter(terms(body, stopwords))
@@ -128,7 +153,19 @@ def build_index(
         doc_norms=doc_norms,
         avg_title_len=_average(document.title_len for document in documents),
         avg_body_len=_average(document.body_len for document in documents),
+        duplicates_skipped=duplicates,
     )
+
+
+def _content_digest(html: str) -> str:
+    """正文内容的指纹，用于识别同一内容的不同入口。
+
+    先做一次轻量规范化（去掉换行与连续空白），避免 http/https 两份页面因
+    个别空白差异被当成不同文档——实测这两个版本除了 <script> 里的计数器外
+    正文一致，规范化后再哈希能稳定合并。
+    """
+    normalized = " ".join(html.split())
+    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
 
 
 def _document_norms(

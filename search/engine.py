@@ -33,7 +33,8 @@ class SearchEngine:
         documents: dict[str, DocumentInfo],
         idf: dict[str, float],
         doc_norms: dict[str, float],
-        postings_path: Path,
+        term_offsets: dict[str, int],
+        terms_path: Path,
         stopwords: frozenset[str],
         title_weight: float,
     ) -> None:
@@ -43,7 +44,8 @@ class SearchEngine:
         self.doc_norms = doc_norms
         self.stopwords = stopwords
         self.title_weight = title_weight
-        self._postings_path = postings_path
+        self._term_offsets = term_offsets
+        self._terms_path = terms_path
 
     @property
     def document_count(self) -> int:
@@ -80,17 +82,21 @@ class SearchEngine:
     # ------------------------------------------------------------------
 
     def _postings_for(self, wanted: dict[str, float]):  # type: ignore[no-untyped-def]
-        """流式扫描 terms.jsonl，只产出查询涉及的词条。"""
-        remaining = set(wanted)
-        with self._postings_path.open(encoding="utf-8") as handle:
-            for line in handle:
-                if not remaining:
-                    break
-                entry = json.loads(line)
-                term = entry["term"]
-                if term not in remaining:
+        """按 term_offsets.json 里的偏移直接 seek 读取涉及的行。
+
+        只读查询涉及的几个词，不扫描整张倒排表——这是查询耗时的关键：
+        terms.jsonl 在 8711 篇文档时已有 65 MB，全表扫描约 1.7 秒/次。
+
+        以二进制模式 seek + readline：偏移量是文件里的真实字节位置，
+        与写入端（binary 模式）严格对应。
+        """
+        with self._terms_path.open("rb") as handle:
+            for term in wanted:
+                offset = self._term_offsets.get(term)
+                if offset is None:
                     continue
-                remaining.discard(term)
+                handle.seek(offset)
+                entry = json.loads(handle.readline().decode("utf-8"))
                 yield term, (tuple(posting) for posting in entry["postings"])
 
     def _as_result(self, doc_id: str, score: float) -> SearchResult:
@@ -122,6 +128,7 @@ def load_index(index_dir: Path, stopwords: frozenset[str]) -> SearchEngine:
         )
 
     payload = json.loads((index_dir / "stats.json").read_text(encoding="utf-8"))
+    offsets = json.loads((index_dir / "term_offsets.json").read_text(encoding="utf-8"))
     documents = _load_documents(index_dir)
 
     return SearchEngine(
@@ -129,7 +136,8 @@ def load_index(index_dir: Path, stopwords: frozenset[str]) -> SearchEngine:
         documents=documents,
         idf=payload["idf"],
         doc_norms=payload["doc_norms"],
-        postings_path=index_dir / "terms.jsonl",
+        term_offsets=offsets,
+        terms_path=index_dir / "terms.jsonl",
         stopwords=stopwords,
         title_weight=float(meta["title_weight"]),
     )
